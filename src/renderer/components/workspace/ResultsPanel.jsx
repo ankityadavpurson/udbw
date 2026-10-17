@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   ActionMenu, Alert, Button, Card, Chip, CodeDisplay, CopyIcon, DataGrid, DatabaseIcon, Divider, DownloadIcon, EditIcon, EyeIcon, Flex,
-  HelperText, Loader, PlusIcon, RefreshIcon, Stack, ToggleButton, ToggleButtonGroup, Trash2Icon
+  HelperText, ListIcon, Loader, PlusIcon, RefreshIcon, Stack, ToggleButton, ToggleButtonGroup, Trash2Icon
 } from 'xedonium';
 import { engines } from '../../constants.js';
 import { EXPORT_FORMATS } from '../../lib/exporters.js';
@@ -9,12 +9,16 @@ import ResizableHeader from './ResizableHeader.jsx';
 import { isDocumentResult, toRecords, toTable } from '../../lib/results.js';
 import BrowseBar from './BrowseBar.jsx';
 import DocumentList from './DocumentList.jsx';
+import StructureDialog from '../dialogs/StructureDialog.jsx';
 import NestedValue, { plainText } from './NestedValue.jsx';
 
 const MAX_LOAD = 100000;
 
 export default function ResultsPanel({ tab, status, records, isConnected, busy, readOnly, language, onViewChange, onSelect, onRerun, onCopyRows, onExport, onLoadMore, onBrowse }) {
   const { result, error, view, meta, selected } = tab;
+  const [structureOpen, setStructureOpen] = useState(false);
+  const object = tab.selectedObject;
+  const hasStructure = Boolean(object?.columnInfo?.length);
   // Only show the loader for queries that take a moment, so quick ones don't flash.
   const [slow, setSlow] = useState(false);
   useEffect(() => {
@@ -97,11 +101,13 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
     <Card className="compact-card flex-1 !border-x-0 !border-t-0 [&>div:last-child]:flex [&>div:last-child]:flex-col" title="Results" subtitle={`${meta} · ${status}`} padded={false}
       actions={<Flex gap={2} align="center" wrap className="compact-buttons">
         <ToggleButtonGroup exclusive aria-label="Result view" value={view} onChange={value => value && onViewChange(value)}><ToggleButton value="table">Table</ToggleButton><ToggleButton value="json">JSON</ToggleButton></ToggleButtonGroup>
+        {hasStructure && <Button variant="secondary" onClick={() => setStructureOpen(true)}><ListIcon /> Structure</Button>}
         <ActionMenu label="Export results" variant="secondary" placement="bottom-end" trigger={<><DownloadIcon /> Export</>} items={exportItems} />
       </Flex>}>
       {browsing && <BrowseBar browse={tab.browse} columns={browseColumns} language={language} loading={tab.running} hasNext={tab.hasNext} onChange={onBrowse} />}
       {limitNote}
       {body()}
+      <StructureDialog open={structureOpen} onClose={() => setStructureOpen(false)} object={object} />
     </Card>
   );
 }

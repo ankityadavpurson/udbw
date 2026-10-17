@@ -76,10 +76,16 @@ async function discover(session, database) {
   const [rows] = selected ? await client.query(
     'SELECT TABLE_SCHEMA AS schemaName, TABLE_NAME AS name, TABLE_TYPE AS objectType, ENGINE AS engine FROM information_schema.tables WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME', [selected]
   ) : [[]];
+  const [routines] = selected ? await client.query(
+    'SELECT ROUTINE_NAME AS name, ROUTINE_TYPE AS kind FROM information_schema.routines WHERE ROUTINE_SCHEMA = ? ORDER BY ROUTINE_NAME LIMIT 2000', [selected]
+  ) : [[]];
   // Columns and keys are loaded per table when it is opened (see describe), so a big schema lists quickly.
   return {
     databases, schemas: [selected].filter(Boolean), message: '',
-    objects: rows.map(r => ({ name: r.name, schema: r.schemaName, type: String(r.objectType).toLowerCase() === 'view' ? 'view' : 'table', metadata: r.engine || '' }))
+    objects: [
+      ...rows.map(r => ({ name: r.name, schema: r.schemaName, type: String(r.objectType).toLowerCase() === 'view' ? 'view' : 'table', metadata: r.engine || '' })),
+      ...routines.map(r => ({ name: r.name, schema: selected, type: 'function', metadata: String(r.kind).toLowerCase() }))
+    ]
   };
 }
 

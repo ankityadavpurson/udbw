@@ -4,6 +4,10 @@ const objectRef = object => ({ name: object.name, schema: object.schema });
 
 // SELECT-style statement used when an object is opened from the sidebar.
 export function selectStatement(active, object) {
+  if (object.type === 'function' && active?.type === 'mysql') {
+    const quoted = `\`${object.name.replace(/`/g, '``')}\``;
+    return `SHOW CREATE ${object.metadata === 'procedure' ? 'PROCEDURE' : 'FUNCTION'} ${quoted};`;
+  }
   if (object.type === 'function') return `SELECT pg_get_functiondef(${Number(object.oid)});`;
   if (active?.type === 'mongodb') return `find ${object.name} LIMIT 100`;
   if (active?.type === 'firestore') return `read ${object.name} LIMIT 100`;
