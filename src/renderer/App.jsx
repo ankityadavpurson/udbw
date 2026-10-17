@@ -113,8 +113,8 @@ export default function App() {
     <>
       <div className="flex h-full overflow-hidden bg-app-bg text-app-text">
         {isMd && <aside className="shrink-0">{sidebar(() => {}, false, !isLg)}</aside>}
-        <main className="min-w-0 flex-1 overflow-y-auto p-2">
-          <Stack gap={2}>
+        <main className="min-w-0 flex-1 overflow-y-auto">
+          <Stack gap={0}>
             <ConnectionToolbar active={active} engine={conn.engine} status={active ? conn.connectionStatus(active.id) : undefined} isConnected={isConnected} busy={busy}
               showMenuButton={!isMd} onOpenMenu={() => setDrawerOpen(true)} onConnect={connect} onDisconnect={disconnect} onRun={() => tabsApi.runQuery()} menuItems={connectionMenu} />
             <QueryTabs tabs={tabsApi.connTabs} activeTabId={tab.id} canAdd={Boolean(active)} onSelect={tabsApi.setActiveTabId} onClose={tabsApi.closeTab} onAdd={() => tabsApi.addTab()} />

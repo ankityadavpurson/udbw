@@ -56,7 +56,7 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
   ];
 
   return (
-    <Card className="compact-card" title="Results" subtitle={`${meta} · ${status}`} padded={false}
+    <Card className="compact-card !border-x-0 !border-t-0" title="Results" subtitle={`${meta} · ${status}`} padded={false}
       actions={<Flex gap={2} align="center" wrap className="compact-buttons">
         <ToggleButtonGroup exclusive aria-label="Result view" value={view} onChange={value => value && onViewChange(value)}><ToggleButton value="table">Table</ToggleButton><ToggleButton value="json">JSON</ToggleButton></ToggleButtonGroup>
         <ActionMenu label="Export results" variant="secondary" placement="bottom-end" trigger={<><DownloadIcon /> Export</>} items={exportItems} />

@@ -3,7 +3,7 @@ import StatusDot from '../StatusDot.jsx';
 
 export default function ConnectionToolbar({ active, engine, status, isConnected, busy, showMenuButton, onOpenMenu, onConnect, onDisconnect, onRun, menuItems }) {
   return (
-    <Flex gap={2} align="center" justify="between" wrap>
+    <Flex gap={2} align="center" justify="between" wrap className="px-2 py-1.5">
       <Flex gap={2} align="center" className="min-w-0">
         {showMenuButton && <Button variant="secondary" aria-label="Open menu" onClick={onOpenMenu}><MenuIcon /></Button>}
         {active && <StatusDot state={status} />}

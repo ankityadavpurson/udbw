@@ -31,11 +31,11 @@ export default function AppSidebar({ close, inDrawer, autoCollapsed, profiles, a
   ]);
 
   return (
-    <div className={`flex h-full flex-col border-r border-app-border bg-app-card ${inDrawer ? 'w-full' : collapsed ? 'w-14' : 'w-64'}`}>
+    <div className={`flex h-full flex-col border-r border-app-border bg-app-card ${inDrawer ? 'w-full' : collapsed ? 'w-12' : 'w-64'}`}>
       {collapsed && (
-        <Flex direction="column" align="center" gap={2} className="shrink-0 border-b border-app-border px-1 py-2">
+        <Flex direction="column" align="center" gap={1} className="compact-buttons compact-icons shrink-0 border-b border-app-border px-1 py-1.5">
           <Button variant="flat" tooltip="Expand sidebar" tooltipPlacement="right" aria-label="Expand sidebar" onClick={() => toggleNav(true)}><ChevronRightIcon /></Button>
-          <Button tooltip="New connection" tooltipPlacement="right" aria-label="New connection" onClick={() => { onNew(); close(); }}><PlusIcon /></Button>
+          <Button variant="flat" tooltip="New connection" tooltipPlacement="right" aria-label="New connection" onClick={() => { onNew(); close(); }}><PlusIcon /></Button>
         </Flex>
       )}
       <Sidebar label="Connections" bordered={false} density="dense" collapsed={collapsed} className="!h-auto !w-full max-h-[42%] min-h-0 flex-none [&_li[role=presentation]]:!pt-1" activeKey={activeId || undefined}
