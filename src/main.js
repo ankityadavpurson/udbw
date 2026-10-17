@@ -10,6 +10,8 @@ const { createClient } = require('@supabase/supabase-js');
 const admin = require('firebase-admin');
 
 let mainWindow;
+// Custom title bar: the native one is hidden and Electron draws only the window buttons, in these colours.
+const TITLE_BAR = { height: 30, dark: { color: '#1f1f1f', symbolColor: '#ffffff' }, light: { color: '#ffffff', symbolColor: '#151515' } };
 let splash;
 let splashShownAt = 0;
 const SPLASH_MIN_MS = 700;      // avoid a flash when the UI is ready almost immediately
@@ -45,6 +47,8 @@ function revealMainWindow() {
 function createWindow() {
   mainWindow = new BrowserWindow({
     show: false,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { ...TITLE_BAR.dark, height: TITLE_BAR.height },
     autoHideMenuBar: true,   // the menu bar appears on Alt; its shortcuts keep working while hidden
     width: 1440,
     height: 940,
@@ -82,7 +86,13 @@ function buildAppMenu(theme = 'dark') {
   ]));
 }
 
-ipcMain.on('theme:report', (_event, theme) => { if (theme === 'light' || theme === 'dark') buildAppMenu(theme); });
+ipcMain.on('theme:report', (_event, theme) => {
+  if (theme !== 'light' && theme !== 'dark') return;
+  buildAppMenu(theme);
+  if (mainWindow && !mainWindow.isDestroyed() && typeof mainWindow.setTitleBarOverlay === 'function') {
+    try { mainWindow.setTitleBarOverlay({ ...TITLE_BAR[theme], height: TITLE_BAR.height }); } catch (_) { /* not supported here */ }
+  }
+});
 
 app.whenReady().then(() => {
   buildAppMenu();

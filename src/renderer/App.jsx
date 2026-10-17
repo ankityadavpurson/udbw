@@ -9,6 +9,7 @@ import useConnectionDialog from './hooks/useConnectionDialog.js';
 import { selectStatement } from './lib/statements.js';
 import { languageFor } from './lib/tokenize.js';
 import { copyToClipboard, downloadCsv, downloadJson } from './lib/exporters.js';
+import TitleBar from './components/TitleBar.jsx';
 import AppSidebar from './components/sidebar/AppSidebar.jsx';
 import ObjectBrowser from './components/sidebar/ObjectBrowser.jsx';
 import ConnectionToolbar from './components/workspace/ConnectionToolbar.jsx';
@@ -115,20 +116,23 @@ export default function App() {
 
   return (
     <>
-      <div className="flex h-full overflow-hidden border-t border-app-border bg-app-bg text-app-text">
-        {isMd && <aside className="shrink-0">{sidebar(() => {}, false, !isLg)}</aside>}
-        <main className="min-w-0 flex-1 overflow-y-auto">
-          <Stack gap={0}>
-            <ConnectionToolbar active={active} engine={conn.engine} status={active ? conn.connectionStatus(active.id) : undefined} isConnected={isConnected} busy={busy}
-              showMenuButton={!isMd} onOpenMenu={() => setDrawerOpen(true)} onConnect={connect} onDisconnect={disconnect} onRun={() => tabsApi.runQuery()} menuItems={connectionMenu} />
-            <QueryTabs tabs={tabsApi.connTabs} activeTabId={tab.id} canAdd={Boolean(active)} onSelect={tabsApi.setActiveTabId} onClose={tabsApi.closeTab} onAdd={() => tabsApi.addTab()} />
-            <QueryEditor language={languageFor(active)} value={tab.query} onRun={() => tabsApi.runQuery()}
-              onChange={value => { tabsApi.setQuery(value); if (activeId) conn.setLastQuery(activeId, value); }} />
-            <ResultsPanel tab={tab} status={status} records={records} isConnected={isConnected} busy={busy}
-              onViewChange={tabsApi.setView} onSelect={tabsApi.setSelected} onRerun={() => tabsApi.runQuery()} onCopyRows={copyText}
-              onExportJson={() => downloadJson(tab.result)} onExportCsv={() => downloadCsv(tab.result)} />
-          </Stack>
-        </main>
+      <div className="flex h-full flex-col overflow-hidden bg-app-bg text-app-text">
+        <TitleBar />
+        <div className="flex min-h-0 flex-1">
+          {isMd && <aside className="shrink-0">{sidebar(() => {}, false, !isLg)}</aside>}
+          <main className="min-w-0 flex-1 overflow-y-auto">
+            <Stack gap={0} className="min-h-full">
+              <ConnectionToolbar active={active} engine={conn.engine} status={active ? conn.connectionStatus(active.id) : undefined} isConnected={isConnected} busy={busy}
+                showMenuButton={!isMd} onOpenMenu={() => setDrawerOpen(true)} onConnect={connect} onDisconnect={disconnect} onRun={() => tabsApi.runQuery()} menuItems={connectionMenu} />
+              <QueryTabs tabs={tabsApi.connTabs} activeTabId={tab.id} canAdd={Boolean(active)} onSelect={tabsApi.setActiveTabId} onClose={tabsApi.closeTab} onAdd={() => tabsApi.addTab()} />
+              <QueryEditor language={languageFor(active)} value={tab.query} onRun={() => tabsApi.runQuery()}
+                onChange={value => { tabsApi.setQuery(value); if (activeId) conn.setLastQuery(activeId, value); }} />
+              <ResultsPanel tab={tab} status={status} records={records} isConnected={isConnected} busy={busy}
+                onViewChange={tabsApi.setView} onSelect={tabsApi.setSelected} onRerun={() => tabsApi.runQuery()} onCopyRows={copyText}
+                onExportJson={() => downloadJson(tab.result)} onExportCsv={() => downloadCsv(tab.result)} />
+            </Stack>
+          </main>
+        </div>
       </div>
 
       <Drawer open={drawerOpen && !isMd} onClose={() => setDrawerOpen(false)} title="Connections" side="left" width="max-w-xs" padded={false}>

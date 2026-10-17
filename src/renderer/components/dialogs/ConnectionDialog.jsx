@@ -18,10 +18,12 @@ export default function ConnectionDialog({ dialog, groups }) {
   };
   return (
     <Modal open={open} onClose={close} title={editingId ? 'Edit connection' : 'New connection'} as="form" noValidate onSubmit={submit} maxWidth="max-w-xl" busy={testing}
-      footer={<Flex justify="end" gap={2}>
+      footer={<Flex justify="between" gap={2} className="w-full">
         <Button type="button" variant="secondary" disabled={testing} onClick={testConnection}>{testing ? <><Loader variant="spinner" size="sm" label="Testing" /> Testing…</> : 'Test connection'}</Button>
-        <Button type="button" variant="flat" onClick={close}>Cancel</Button>
-        <Button type="submit">{editingId ? 'Save changes' : 'Save connection'}</Button>
+        <Flex gap={2}>
+          <Button type="button" variant="flat" onClick={close}>Cancel</Button>
+          <Button type="submit">{editingId ? 'Save changes' : 'Save connection'}</Button>
+        </Flex>
       </Flex>}>
       <Stack gap={3} className="compact-fields p-4">
         <HelperText>Credentials are encrypted before they are saved on this device.</HelperText>

@@ -30,7 +30,7 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
     if (slow) return <Stack className="items-center px-6 py-14"><Loader variant="stacked" size="md" label="Running query…" /></Stack>;
     if (error) return <div className="p-4"><Alert tone="danger" title="Query failed"><span className="whitespace-pre-wrap">{error}</span></Alert></div>;
     if (!result) return (
-      <Stack gap={3} className="items-center px-6 py-14 text-center">
+      <Stack gap={3} className="flex-1 items-center justify-center px-6 py-14 text-center">
         <DatabaseIcon className="h-9 w-9 text-app-muted" />
         <h2 className="text-lg font-semibold">Your databases, one workspace</h2>
         <HelperText>Create a connection, connect, then browse an object or run a query.</HelperText>
@@ -65,7 +65,7 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
   ];
 
   return (
-    <Card className="compact-card !border-x-0 !border-t-0" title="Results" subtitle={`${meta} · ${status}`} padded={false}
+    <Card className="compact-card flex-1 !border-x-0 !border-t-0 [&>div:last-child]:flex [&>div:last-child]:flex-col" title="Results" subtitle={`${meta} · ${status}`} padded={false}
       actions={<Flex gap={2} align="center" wrap className="compact-buttons">
         <ToggleButtonGroup exclusive aria-label="Result view" value={view} onChange={value => value && onViewChange(value)}><ToggleButton value="table">Table</ToggleButton><ToggleButton value="json">JSON</ToggleButton></ToggleButtonGroup>
         <ActionMenu label="Export results" variant="secondary" placement="bottom-end" trigger={<><DownloadIcon /> Export</>} items={exportItems} />
