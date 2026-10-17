@@ -1,4 +1,4 @@
-import { Button, Flex, HelperText, Menu, MenuIcon, MoreVerticalIcon, PlayIcon, PowerIcon } from 'xedonium';
+import { Button, Flex, HelperText, Loader, Menu, MenuIcon, MoreVerticalIcon, PlayIcon, PowerIcon } from 'xedonium';
 import StatusDot from '../StatusDot.jsx';
 
 export default function ConnectionToolbar({ active, engine, status, isConnected, busy, showMenuButton, onOpenMenu, onConnect, onDisconnect, onRun, menuItems }) {
@@ -12,9 +12,9 @@ export default function ConnectionToolbar({ active, engine, status, isConnected,
       </Flex>
       <Flex gap={2} align="center" className="compact-buttons">
         <Button variant={isConnected ? 'secondary' : 'default'} disabled={!active || busy} onClick={isConnected ? onDisconnect : onConnect}>
-          <PowerIcon /> {isConnected ? 'Disconnect' : 'Connect'}
+          {status === 'connecting' ? <><Loader variant="spinner" size="sm" label="Connecting" /> Connecting…</> : <><PowerIcon /> {isConnected ? 'Disconnect' : 'Connect'}</>}
         </Button>
-        <Button disabled={!isConnected || busy} tooltip="Ctrl / ⌘ + Enter" onClick={onRun}><PlayIcon /> {busy ? 'Working…' : 'Run'}</Button>
+        <Button disabled={!isConnected || busy} tooltip="Ctrl / ⌘ + Enter" onClick={onRun}>{busy ? <><Loader variant="spinner" size="sm" label="Working" /> Working…</> : <><PlayIcon /> Run</>}</Button>
         <Menu label="Connection actions" variant="secondary" placement="bottom-end" trigger={<MoreVerticalIcon />} items={menuItems} />
       </Flex>
     </Flex>

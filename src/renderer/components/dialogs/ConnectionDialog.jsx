@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Flex, HelperText, Modal, Select, Stack, Field } from 'xedonium';
+import { Alert, Button, Flex, HelperText, Loader, Modal, Select, Stack, Field } from 'xedonium';
 import { engines } from '../../constants.js';
 import ConnectionFields from './ConnectionFields.jsx';
 
@@ -19,7 +19,7 @@ export default function ConnectionDialog({ dialog, groups }) {
   return (
     <Modal open={open} onClose={close} title={editingId ? 'Edit connection' : 'New connection'} as="form" noValidate onSubmit={submit} maxWidth="max-w-xl" busy={testing}
       footer={<Flex justify="end" gap={2}>
-        <Button type="button" variant="secondary" disabled={testing} onClick={testConnection}>{testing ? 'Testing…' : 'Test connection'}</Button>
+        <Button type="button" variant="secondary" disabled={testing} onClick={testConnection}>{testing ? <><Loader variant="spinner" size="sm" label="Testing" /> Testing…</> : 'Test connection'}</Button>
         <Button type="button" variant="flat" onClick={close}>Cancel</Button>
         <Button type="submit">{editingId ? 'Save changes' : 'Save connection'}</Button>
       </Flex>}>

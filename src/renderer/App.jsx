@@ -42,6 +42,9 @@ export default function App() {
     onSaved: (next, existing) => { if (existing && existing.type !== next.type) tabsApi.resetConnectionTabs(next.id, next.type); }
   });
 
+  // Tells the main process the saved connections are loaded, so it can swap the splash for this window.
+  useEffect(() => { if (conn.loaded) window.workbench.appReady(); }, [conn.loaded]);
+
   const chooseConnection = p => { conn.chooseConnection(p); tree.resetFor(p, conn.connected.includes(p.id)); };
 
   async function connect() {
@@ -105,7 +108,7 @@ export default function App() {
   const sidebar = (close, inDrawer, autoCollapsed) => (
     <AppSidebar close={close} inDrawer={inDrawer} autoCollapsed={autoCollapsed} profiles={conn.profiles} activeId={activeId} connectionStatus={conn.connectionStatus}
       onChoose={chooseConnection} onNew={() => dialog.openDialog()} onRefresh={conn.refreshConnections}>
-      <ObjectBrowser active={active} isConnected={isConnected} tree={tree} selectedObject={tab.selectedObject} onOpen={openObject} />
+      <ObjectBrowser active={active} isConnected={isConnected} connecting={active ? conn.connectionStatus(active.id) === 'connecting' : false} tree={tree} selectedObject={tab.selectedObject} onOpen={openObject} />
     </AppSidebar>
   );
 

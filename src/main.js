@@ -10,12 +10,41 @@ const { createClient } = require('@supabase/supabase-js');
 const admin = require('firebase-admin');
 
 let mainWindow;
+let splash;
+let splashShownAt = 0;
+const SPLASH_MIN_MS = 700;      // avoid a flash when the UI is ready almost immediately
+const SPLASH_MAX_MS = 15000;    // never leave the splash up if the UI fails to report
 const sessions = new Map(); // Connection credentials live in memory only.
 const connecting = new Set();
 const connectionStorePath = () => path.join(app.getPath('userData'), 'connections.enc');
 
+function createSplash() {
+  splash = new BrowserWindow({
+    width: 420, height: 260, frame: false, resizable: false, maximizable: false, minimizable: false, show: false,
+    alwaysOnTop: true, skipTaskbar: true, backgroundColor: '#252529', title: 'Universal DB Workbench',
+    icon: path.join(__dirname, '../build/icon.png'),
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
+  });
+  splash.once('ready-to-show', () => { if (splash && !splash.isDestroyed()) { splash.show(); splashShownAt = Date.now(); } });
+  splash.on('closed', () => { splash = null; });
+  splash.loadFile(path.join(__dirname, 'splash.html'));
+}
+
+// Reveals the main window and drops the splash, once the UI has loaded its data (or a timeout hit).
+function revealMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+  const wait = splash ? Math.max(0, SPLASH_MIN_MS - (Date.now() - splashShownAt)) : 0;
+  setTimeout(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.show();
+    if (splash && !splash.isDestroyed()) splash.destroy();
+    splash = null;
+  }, wait);
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
+    show: false,
     width: 1440,
     height: 940,
     minWidth: 1000,
@@ -30,8 +59,13 @@ function createWindow() {
       sandbox: true
     }
   });
+  mainWindow.once('ready-to-show', () => { if (!splash) mainWindow.show(); });   // e.g. reopened from the dock
+  mainWindow.webContents.on('did-fail-load', revealMainWindow);
+  setTimeout(revealMainWindow, SPLASH_MAX_MS);
   mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
 }
+
+ipcMain.on('app:ready', revealMainWindow);
 
 function buildAppMenu(theme = 'dark') {
   const setTheme = mode => mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.send('theme:set', mode);
@@ -51,6 +85,7 @@ ipcMain.on('theme:report', (_event, theme) => { if (theme === 'light' || theme =
 
 app.whenReady().then(() => {
   buildAppMenu();
+  createSplash();
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

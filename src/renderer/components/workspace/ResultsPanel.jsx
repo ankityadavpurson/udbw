@@ -1,6 +1,7 @@
+import { useEffect, useState } from 'react';
 import {
   ActionMenu, Alert, Button, Card, Chip, CodeDisplay, CopyIcon, DataGrid, DatabaseIcon, Divider, DownloadIcon, EditIcon, EyeIcon, Flex,
-  HelperText, PlusIcon, RefreshIcon, Stack, ToggleButton, ToggleButtonGroup, Trash2Icon
+  HelperText, Loader, PlusIcon, RefreshIcon, Stack, ToggleButton, ToggleButtonGroup, Trash2Icon
 } from 'xedonium';
 import { engines } from '../../constants.js';
 import { isDocumentResult, toTable } from '../../lib/results.js';
@@ -9,6 +10,13 @@ import NestedValue, { plainText } from './NestedValue.jsx';
 
 export default function ResultsPanel({ tab, status, records, isConnected, busy, onViewChange, onSelect, onRerun, onCopyRows, onExportJson, onExportCsv }) {
   const { result, error, view, meta, selected } = tab;
+  // Only show the loader for queries that take a moment, so quick ones don't flash.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!tab.running) { setSlow(false); return undefined; }
+    const timer = setTimeout(() => setSlow(true), 250);
+    return () => clearTimeout(timer);
+  }, [tab.running]);
   const { hasSelection, selectedCount, selectedDocs, selectedJson, canEditSelected, canDeleteSelected, openEditor, setViewerOpen, setBulkOpen } = records;
 
   const table = toTable(result);
@@ -19,6 +27,7 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
   const rows = table.rows.map((row, index) => Object.fromEntries([['__i', index], ...row.map((value, j) => [`c${j}`, value])]));
 
   const body = () => {
+    if (slow) return <Stack className="items-center px-6 py-14"><Loader variant="stacked" size="md" label="Running query…" /></Stack>;
     if (error) return <div className="p-4"><Alert tone="danger" title="Query failed"><span className="whitespace-pre-wrap">{error}</span></Alert></div>;
     if (!result) return (
       <Stack gap={3} className="items-center px-6 py-14 text-center">

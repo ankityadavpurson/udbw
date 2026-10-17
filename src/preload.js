@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('workbench', {
   query: (payload) => ipcRenderer.invoke('db:query', payload),
   pickServiceAccount: () => ipcRenderer.invoke('db:pick-service-account'),
   pickSshKey: () => ipcRenderer.invoke('db:pick-ssh-key'),
+  appReady: () => ipcRenderer.send('app:ready'),
   reportTheme: theme => ipcRenderer.send('theme:report', theme),
   onSetTheme: callback => {
     const handler = (_event, mode) => callback(mode);

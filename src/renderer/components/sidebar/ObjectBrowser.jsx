@@ -4,7 +4,8 @@ const typeLabel = type => ({ table: 'Tables', view: 'Views', collection: 'Collec
 const objectKey = item => `obj:${item.schema || ''}.${item.name}`;
 
 // `tree` is the object returned by useObjectTree.
-export default function ObjectBrowser({ active, isConnected, tree, selectedObject, onOpen }) {
+export default function ObjectBrowser({ active, isConnected, connecting, tree, selectedObject, onOpen }) {
+  if (connecting) return <div className="p-4"><Loader variant="inline" size="sm" label="Connecting…" /></div>;
   if (!active || !isConnected) return <HelperText className="p-4">Connect to browse databases and objects.</HelperText>;
   const { objectTree, treeLoading, currentDatabase, currentSchema, objectSearch, setObjectSearch, loadObjectTree, changeDatabase, changeSchema } = tree;
 
