@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  ThemeProvider, AppShell, AppBar, Sidebar, Card, Button, Chip, Alert, Modal, ConfirmDialog, Field, PasswordInput,
+  ThemeProvider, Drawer, Sidebar, Tabs, Card, Button, Chip, Alert, Modal, ConfirmDialog, Field, PasswordInput,
   Select, Checkbox, TextArea, Input, DataGrid, CodeDisplay, Tree, ActionMenu, ToggleButton, ToggleButtonGroup,
   HelperText, Loader, Flex, Stack, Divider,
   DatabaseIcon, PlayIcon, PlusIcon, SearchIcon, RefreshIcon, StarIcon, CopyIcon, Trash2Icon, DownloadIcon, EditIcon,
-  MoreVerticalIcon, TableIcon, PowerIcon, EyeIcon, FolderIcon, ChevronLeftIcon, ChevronRightIcon
+  MoreVerticalIcon, TableIcon, PowerIcon, EyeIcon, FolderIcon, ChevronLeftIcon, ChevronRightIcon, MenuIcon, CloseIcon
 } from 'xedonium';
+import { useTheme } from 'xedonium/theme';
+import useMediaQuery from 'xedonium/hooks/useMediaQuery';
 import 'xedonium/styles.css';
 import './styles.css';
 
@@ -19,8 +21,22 @@ const engines = {
 };
 const blankProfile = { name: '', type: 'mysql', host: '', port: '3306', database: '', username: '', password: '', uri: '', connectionString: '', restUrl: '', apiKey: '', projectId: '', serviceAccountPath: '', ssl: false, sslAllowUntrusted: false, sshEnabled: false, sshHost: '', sshPort: '22', sshUsername: '', sshAuthMethod: 'password', sshPassword: '', sshKeyPath: '', sshPassphrase: '', sshRemoteHost: '' };
 
+const blankTab = { id: 'blank', connId: null, title: '', query: '', result: null, error: '', meta: 'No query executed', view: 'table', selectedIndex: null, selectedObject: null };
+
 function Logo({ className = 'h-7 w-7' }) {
   return <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 2H2v8h2V2zm16 0h2v8h-2V2zm-6 6h-4V2H4v2h4v4H4v2h4v4H4v2h4v4H4v2h6v-6h4v6h2v-6h4v-2h-4v-4h4V8h-4V2h-2v6zm-4 6v-4h4v4h-4zM20 2h-4v2h4V2zM2 14h2v8H2v-8zm14 6h4v2h-4v-2zm6-6h-2v8h2v-8z" /></svg>;
+}
+
+function ThemeBridge() {
+  const { activeTheme, setThemeMode } = useTheme();
+  useEffect(() => window.workbench.onSetTheme(mode => setThemeMode(mode)), [setThemeMode]);
+  useEffect(() => { window.workbench.reportTheme(activeTheme); }, [activeTheme]);
+  return null;
+}
+
+function StatusDot({ state, className = '' }) {
+  const color = state === 'connected' ? 'bg-green-500' : state === 'connecting' ? 'animate-pulse bg-amber-500' : state === 'failed' ? 'bg-red-500' : 'bg-app-border';
+  return <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${color} ${className}`} role="img" aria-label={state || 'disconnected'} />;
 }
 
 function App() {
@@ -39,28 +55,63 @@ function App() {
   const [currentDatabase, setCurrentDatabase] = useState('');
   const [currentSchema, setCurrentSchema] = useState('');
   const [objectSearch, setObjectSearch] = useState('');
-  const [selectedIndex, setSelectedIndex] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const tabCounter = useRef({});
+  const makeTab = (connId, queryText, extra = {}) => ({ id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, connId, title: extra.title ?? `Query ${(tabCounter.current[connId] = (tabCounter.current[connId] || 0) + 1)}`, query: queryText, result: null, error: '', meta: 'No query executed', view: 'table', selectedIndex: null, selectedObject: null, ...extra });
+  const [initialTab] = useState(() => makeTab(null, engines.mysql.query));
+  const [tabs, setTabs] = useState([initialTab]);
+  const [activeTabId, setActiveTabId] = useState(initialTab.id);
+  const isMd = useMediaQuery('(min-width: 768px)');
+  const isLg = useMediaQuery('(min-width: 1024px)');
   const [navCollapsed, setNavCollapsed] = useState(() => { try { return localStorage.getItem('udw-nav-collapsed') === '1' ? true : null; } catch { return null; } });
   const [recordOpen, setRecordOpen] = useState(false);
   const [recordEditorOpen, setRecordEditorOpen] = useState(false);
   const [recordAction, setRecordAction] = useState('insert');
   const [recordJsonText, setRecordJsonText] = useState('{}');
-  const [selectedObject, setSelectedObject] = useState(null);
   const [profile, setProfile] = useState(blankProfile);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [formError, setFormError] = useState('');
-  const [query, setQuery] = useState(engines.mysql.query);
-  const [view, setView] = useState('table');
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
-  const [meta, setMeta] = useState('No query executed');
   const [status, setStatus] = useState('Ready');
   const [busy, setBusy] = useState(false);
   const pendingSaveRef = useRef(false);
   const active = profiles.find(p => p.id === activeId);
   const isConnected = active && connected.includes(active.id);
   const engine = active ? engines[active.type] : null;
+  const connTabs = tabs.filter(t => t.connId === activeId);
+  const tab = connTabs.find(t => t.id === activeTabId) ?? connTabs[0] ?? blankTab;
+  const { query, result, error, meta, view, selectedIndex, selectedObject } = tab;
+  const patchTab = (patch, id = tab.id) => setTabs(all => all.map(t => t.id === id ? { ...t, ...patch } : t));
+  const setQuery = value => patchTab({ query: value });
+  const setResult = value => patchTab({ result: value });
+  const setError = value => patchTab({ error: value });
+  const setMeta = value => patchTab({ meta: value });
+  const setView = value => patchTab({ view: value });
+  const setSelectedIndex = value => patchTab({ selectedIndex: value });
+  const setSelectedObject = value => patchTab({ selectedObject: value });
+
+  useEffect(() => {
+    if (!loaded) return;
+    const mine = tabs.filter(t => t.connId === activeId);
+    if (!mine.length) {
+      const fresh = makeTab(activeId, (active && (lastQueries[activeId] || engines[active.type].query)) || engines.mysql.query);
+      setTabs(all => [...all, fresh]); setActiveTabId(fresh.id);
+    } else if (!mine.some(t => t.id === activeTabId)) setActiveTabId(mine[0].id);
+  }, [tabs, activeId, activeTabId, loaded]);
+
+  function addTab(extra = {}, queryText) {
+    if (!activeId || !active) return null;
+    const fresh = makeTab(activeId, queryText ?? engines[active.type].query, extra);
+    setTabs(all => [...all, fresh]); setActiveTabId(fresh.id);
+    return fresh;
+  }
+  function closeTab(id) {
+    const mine = tabs.filter(t => t.connId === activeId);
+    if (mine.length <= 1) { patchTab({ query: active ? engines[active.type].query : '', result: null, error: '', meta: 'No query executed', selectedIndex: null, selectedObject: null }, id); return; }
+    const index = mine.findIndex(t => t.id === id);
+    setTabs(all => all.filter(t => t.id !== id));
+    if (id === tab.id) setActiveTabId((mine[index + 1] ?? mine[index - 1]).id);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -71,10 +122,6 @@ function App() {
         setProfiles(saved.profiles || []); setLastQueries(saved.lastQueries || {});
         const lastId = saved.activeId && saved.profiles?.some(p => p.id === saved.activeId) ? saved.activeId : null;
         setActiveId(lastId);
-        if (lastId) {
-          const last = saved.profiles.find(p => p.id === lastId);
-          if (last) setQuery(saved.lastQueries?.[lastId] || engines[last.type]?.query || engines.mysql.query);
-        }
       } else setStatus(`Could not restore saved connections: ${saved.error?.message || 'Secure storage unavailable'}`);
       setLoaded(true);
     }).catch(err => { if (!cancelled) { setLoaded(true); setStatus(`Could not restore connections: ${err.message}`); } });
@@ -103,6 +150,7 @@ function App() {
   useEffect(() => {
     const onShortcut = event => {
       const key = event.key.toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && key === 't' && !event.altKey) { event.preventDefault(); addTab(); return; }
       if ((event.ctrlKey || event.metaKey) && key === 'r' && !event.altKey) {
         event.preventDefault();
         if (activeId) loadObjectTree(); else refreshConnections();
@@ -117,7 +165,7 @@ function App() {
     };
     window.addEventListener('keydown', onShortcut);
     return () => window.removeEventListener('keydown', onShortcut);
-  }, [activeId, active, connected, connectionStates, currentDatabase, currentSchema, treeLoading, busy]);
+  }, [activeId, active, connected, connectionStates, currentDatabase, currentSchema, treeLoading, busy, tabs]);
 
   function openDialog(existing = null) {
     setEditingId(existing?.id || null);
@@ -159,12 +207,14 @@ function App() {
       setStatus(`Saved ${next.name}. Connect whenever you are ready.`);
     }
     if (editingId && existing?.type !== next.type) setLastQueries(queries => { const updated = { ...queries }; delete updated[next.id]; return updated; });
-    setStorageReady(true); setActiveId(next.id); setQuery(lastQueries[next.id] || engines[next.type].query); setDialogOpen(false);
+    setStorageReady(true); setActiveId(next.id);
+    if (existing && existing.type !== next.type) setTabs(all => all.map(t => t.connId === next.id ? { ...t, query: engines[next.type].query, result: null, error: '', selectedIndex: null } : t));
+    setDialogOpen(false);
   }
   async function chooseConnection(p) {
     const used = { ...p, lastUsedAt: Date.now() };
     setProfiles(all => all.map(item => item.id === p.id ? used : item));
-    setActiveId(p.id); setQuery(lastQueries[p.id] || engines[p.type].query); setResult(null); setError(''); setMeta('No query executed'); setCurrentDatabase(p.database || ''); setCurrentSchema(''); setObjectSearch(''); setStatus(`Selected ${p.name}`);
+    setActiveId(p.id); setCurrentDatabase(p.database || ''); setCurrentSchema(''); setObjectSearch(''); setStatus(`Selected ${p.name}`);
     if (connected.includes(p.id)) await loadObjectTree(p.id, p.database || ''); else setObjectTree(null);
   }
   async function loadObjectTree(id = activeId, database = currentDatabase, schema = currentSchema) {
@@ -194,15 +244,21 @@ function App() {
     setProfiles(all => all.map(p => p.id === active.id ? { ...p, database } : p));
     setCurrentSchema(''); await loadObjectTree(active.id, database, '');
   }
+  function selectStatement(object) {
+    if (active?.type === 'mongodb') return `find ${object.name} LIMIT 100`;
+    if (active?.type === 'firestore') return `read ${object.name} LIMIT 100`;
+    if (active?.type === 'supabase' && !active.connectionString) return `REST: ${object.name} LIMIT 100`;
+    if (active?.type === 'mysql') return `SELECT * FROM \`${object.name.replace(/`/g, '``')}\` LIMIT 100;`;
+    return `SELECT * FROM "${(object.schema ? `${object.schema}"."` : '')}${object.name.replace(/"/g, '""')}" LIMIT 100;`;
+  }
   async function openObject(object) {
-    setSelectedObject(object); setSelectedIndex(null);
-    let statement;
-    if (active?.type === 'mongodb') statement = `find ${object.name} LIMIT 100`;
-    else if (active?.type === 'firestore') statement = `read ${object.name} LIMIT 100`;
-    else if (active?.type === 'supabase' && !active.connectionString) statement = `REST: ${object.name} LIMIT 100`;
-    else if (active?.type === 'mysql') statement = `SELECT * FROM \`${object.name.replace(/`/g, '``')}\` LIMIT 100;`;
-    else statement = `SELECT * FROM "${(object.schema ? `${object.schema}"."` : '')}${object.name.replace(/"/g, '""')}" LIMIT 100;`;
-    setQuery(statement); setStatus(`Browsing ${object.name}…`); await runQuery(statement);
+    const statement = selectStatement(object);
+    const objectKey = item => `${item.schema || ''}.${item.name}`;
+    let target = connTabs.find(t => t.selectedObject && objectKey(t.selectedObject) === objectKey(object));
+    if (target) setActiveTabId(target.id);
+    else { target = addTab({ title: object.name, selectedObject: object }, statement); if (!target) return; }
+    patchTab({ query: statement, selectedObject: object, selectedIndex: null }, target.id);
+    setStatus(`Browsing ${object.name}…`); await runQuery(statement, target.id);
   }
   function openRecordEditor(action) {
     if (!selectedObject) return;
@@ -262,7 +318,7 @@ function App() {
       }
     }
     setRecordEditorOpen(false); setStatus(`${recordAction === 'insert' ? 'Inserting' : recordAction === 'edit' ? 'Updating' : 'Deleting'} record…`);
-    if (await runQuery(statement)) await openObject(object);
+    if (await runQuery(statement)) { const select = selectStatement(object); setQuery(select); await runQuery(select); }
   }
   async function testConnection() {
     if (!profile.name.trim()) return setFormError('Enter a connection name before testing.');
@@ -300,7 +356,8 @@ function App() {
     setConnectionStates(states => { const next = { ...states }; delete next[p.id]; return next; });
     setProfiles(all => all.filter(item => item.id !== p.id)); setStorageReady(true);
     setLastQueries(all => { const next = { ...all }; delete next[p.id]; return next; });
-    if (activeId === p.id) { setActiveId(null); setResult(null); }
+    setTabs(all => all.filter(t => t.connId !== p.id));
+    if (activeId === p.id) setActiveId(null);
     setStatus(`Deleted ${p.name}.`);
   }
   async function connect() {
@@ -325,21 +382,21 @@ function App() {
     if (activeId === id) setObjectTree(null);
     setStatus(res.ok ? `Disconnected from ${active.name}` : 'Disconnect failed');
   }
-  async function runQuery(statement = query) {
+  async function runQuery(statement = query, tabId = tab.id) {
     if (!active || !isConnected || !statement.trim()) return false;
-    setBusy(true); setStatus('Executing…'); setError(''); const started = performance.now();
+    const patch = changes => patchTab(changes, tabId);
+    setBusy(true); setStatus('Executing…'); patch({ error: '' }); const started = performance.now();
     const res = await window.workbench.query({ id: active.id, query: statement.trim() }); setBusy(false);
     if (!res.ok) {
       const message = res.error.message || 'Unknown error';
-      setError(`${message}${res.error.code ? `\n\nCode: ${res.error.code}` : ''}`); setMeta('Query failed'); setResult(null); setStatus(`Error: ${message}`);
+      patch({ error: `${message}${res.error.code ? `\n\nCode: ${res.error.code}` : ''}`, meta: 'Query failed', result: null }); setStatus(`Error: ${message}`);
       if (/ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|57P01|08006|08001|connection terminated|not connected|server closed the connection/i.test(`${res.error.code || ''} ${message}`)) {
         setConnected(all => all.filter(id => id !== active.id)); setConnectionStates(states => ({ ...states, [active.id]: 'failed' })); setObjectTree(null);
       }
       return false;
     }
     const data = { ...res.result, elapsedMs: Math.round(performance.now() - started) };
-    setResult(data); setMeta(`${data.message || 'Completed'} · ${data.elapsedMs} ms`); setStatus('Query completed');
-    setSelectedIndex(null);
+    patch({ result: data, meta: `${data.message || 'Completed'} · ${data.elapsedMs} ms`, selectedIndex: null }); setStatus('Query completed');
     return true;
   }
   function exportResult() {
@@ -498,18 +555,15 @@ function App() {
   const orderedProfiles = [...profiles].sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || (b.lastUsedAt || 0) - (a.lastUsedAt || 0) || a.name.localeCompare(b.name));
   const connectionStatus = id => connectionStates[id] || (connected.includes(id) ? 'connected' : 'disconnected');
   const profileGroups = [...new Set(orderedProfiles.map(p => p.group?.trim() || 'Connections'))];
-  const statusBadge = { connected: 'LIVE', connecting: '…', failed: 'ERR' };
   const showSections = profileGroups.length > 1 || profileGroups[0] !== 'Connections';
   const connectionItems = profileGroups.flatMap(group => [
     ...(showSections ? [{ key: `section:${group}`, label: group, section: true }] : []),
     ...orderedProfiles.filter(p => (p.group?.trim() || 'Connections') === group).map(p => ({
       key: p.id, label: `${p.favorite ? '★ ' : ''}${p.name}`,
-      icon: <span className="text-[10px] font-bold">{engines[p.type].icon}</span>,
-      badge: statusBadge[connectionStatus(p.id)], onClick: () => chooseConnection(p)
+      icon: <span className="inline-flex items-center gap-1.5 text-[10px] font-bold"><StatusDot state={connectionStatus(p.id)} />{engines[p.type].icon}</span>,
+      onClick: () => chooseConnection(p)
     }))
   ]);
-  const statusTone = isConnected ? 'success' : connectionStates[activeId] === 'failed' ? 'danger' : 'default';
-  const statusLabel = isConnected ? 'Connected' : active ? (connectionStates[activeId] === 'connecting' ? 'Connecting…' : connectionStates[activeId] === 'failed' ? 'Connection failed' : 'Not connected') : 'No active connection';
 
   function toggleNav(currentlyCollapsed) {
     const next = !currentlyCollapsed;
@@ -520,12 +574,18 @@ function App() {
     const collapsed = !inDrawer && (navCollapsed ?? autoCollapsed);
     const items = collapsed ? connectionItems.filter(item => !item.section) : connectionItems;
     return <div className={`flex h-full flex-col border-r border-app-border bg-app-card ${inDrawer ? 'w-full' : collapsed ? 'w-14' : 'w-64'}`}>
+      <Flex align="center" justify={collapsed ? 'center' : 'between'} gap={2} className={`shrink-0 border-b border-app-border ${collapsed ? 'px-1 py-2' : 'px-3 py-2'}`}>
+        <Flex align="center" gap={2} className="min-w-0"><span className="flex h-9 w-9 shrink-0 items-center justify-center text-app-strong"><Logo className="h-7 w-7" /></span>{!collapsed && <span className="truncate text-sm font-bold" title="Universal DB Workbench">DB Workbench</span>}</Flex>
+        {!collapsed && !inDrawer && <Button variant="flat" tooltip="Collapse sidebar" aria-label="Collapse sidebar" onClick={() => toggleNav(false)}><ChevronLeftIcon /></Button>}
+      </Flex>
+      <Flex direction={collapsed ? 'column' : 'row'} align="center" gap={2} className={`shrink-0 border-b border-app-border ${collapsed ? 'px-1 py-2' : 'px-3 py-2'}`}>
+        <Button className={collapsed ? '' : 'flex-1'} tooltip={collapsed ? 'New connection' : undefined} tooltipPlacement="right" aria-label="New connection" onClick={() => { openDialog(); close(); }}><PlusIcon />{!collapsed && ' New connection'}</Button>
+        {collapsed && <Button variant="flat" tooltip="Expand sidebar" tooltipPlacement="right" aria-label="Expand sidebar" onClick={() => toggleNav(true)}><ChevronRightIcon /></Button>}
+      </Flex>
       <Sidebar label="Connections" bordered={false} density="dense" collapsed={collapsed} className="!h-auto !w-full max-h-[42%] min-h-0 flex-none" activeKey={activeId || undefined}
         items={items.map(item => item.section ? item : { ...item, onClick: () => { item.onClick(); close(); } })}
-        headerClassName={collapsed ? 'flex justify-center px-1 py-2' : 'px-3 py-2'}
-        header={collapsed
-          ? <Button variant="flat" tooltip="Expand sidebar" tooltipPlacement="right" aria-label="Expand sidebar" onClick={() => toggleNav(true)}><ChevronRightIcon /></Button>
-          : <Flex justify="between" align="center"><span className="text-xs font-semibold uppercase tracking-widest text-app-muted">Connections</span><Flex gap={1}><Button variant="flat" tooltip="Refresh connections" aria-label="Refresh connections" onClick={refreshConnections}><RefreshIcon /></Button><Button variant="flat" tooltip="New connection" aria-label="New connection" onClick={() => { openDialog(); close(); }}><PlusIcon /></Button>{!inDrawer && <Button variant="flat" tooltip="Collapse sidebar" aria-label="Collapse sidebar" onClick={() => toggleNav(false)}><ChevronLeftIcon /></Button>}</Flex></Flex>} />
+        headerClassName={collapsed ? 'hidden' : 'px-3 py-2'}
+        header={<Flex justify="between" align="center"><span className="text-xs font-semibold uppercase tracking-widest text-app-muted">Connections</span><Button variant="flat" tooltip="Refresh connections" aria-label="Refresh connections" onClick={refreshConnections}><RefreshIcon /></Button></Flex>} />
       {!collapsed && <>
         {!connectionItems.length && <HelperText className="px-4 pb-3">Add a connection to get started.</HelperText>}
         <Divider />
@@ -549,12 +609,13 @@ function App() {
   ];
 
   return <ThemeProvider storageKey="universal-db-theme">
-    <AppShell className="[&_main]:!p-2 [&_header_button]:!h-9 [&_header_button]:!min-h-0 [&_header_button]:!py-0" sidebarTitle="Connections" sidebar={renderSidebar} sidebarCollapsedBelow="lg"
-      header={<AppBar embedded logo={<span className="flex h-9 w-9 items-center justify-center text-app-strong"><Logo className="h-7 w-7" /></span>} brand={<span className="flex h-9 items-center">Universal DB Workbench</span>}
-        actions={<Flex gap={2} align="center"><Chip tone={statusTone} className="hidden !h-9 items-center px-3 text-xs sm:inline-flex">{statusLabel}</Chip><Button aria-label="New connection" onClick={() => openDialog()}><PlusIcon /><span className="hidden sm:inline"> New connection</span></Button></Flex>} />}>
+    <ThemeBridge />
+    <div className="flex h-screen overflow-hidden bg-app-bg text-app-text">
+      {isMd && <aside className="shrink-0">{renderSidebar(() => {}, { inDrawer: false, collapsed: !isLg })}</aside>}
+      <main className="min-w-0 flex-1 overflow-y-auto p-2">
       <Stack gap={2}>
         <Flex gap={2} align="center" justify="between" wrap>
-          <Flex gap={2} align="baseline" className="min-w-0"><strong className="truncate text-sm">{active?.name || 'No connection selected'}</strong><HelperText className="truncate">{engine?.help || 'Select or create a connection to begin'}</HelperText></Flex>
+          <Flex gap={2} align="center" className="min-w-0">{!isMd && <Button variant="secondary" aria-label="Open menu" onClick={() => setDrawerOpen(true)}><MenuIcon /></Button>}{active && <StatusDot state={connectionStatus(active.id)} />}<strong className="truncate text-sm">{active?.name || 'No connection selected'}</strong><HelperText className="truncate">{engine?.help || 'Select or create a connection to begin'}</HelperText></Flex>
           <Flex gap={2} align="center">
             <Button disabled={!active || isConnected || busy} onClick={() => connect()}><PowerIcon /> Connect</Button>
             <Button variant="secondary" disabled={!isConnected || busy} onClick={() => disconnect()}>Disconnect</Button>
@@ -562,6 +623,10 @@ function App() {
             <ActionMenu label="Connection actions" variant="secondary" placement="bottom-end" trigger={<MoreVerticalIcon />} items={connectionMenu} />
           </Flex>
         </Flex>
+        {!!connTabs.length && <Flex gap={1} align="center">
+          <div className="min-w-0 flex-1"><Tabs value={tab.id} onChange={setActiveTabId} items={connTabs.map(t => ({ key: t.id, label: <span className="inline-flex max-w-[12rem] items-center gap-2"><span className="truncate">{t.title}</span><span role="button" aria-label={`Close ${t.title}`} className="shrink-0 rounded p-0.5 opacity-60 hover:bg-app-border hover:opacity-100 [&>svg]:h-3 [&>svg]:w-3" onClick={e => { e.stopPropagation(); closeTab(t.id); }}><CloseIcon /></span></span> }))} /></div>
+          <Button variant="flat" tooltip="New query tab (Ctrl+T)" aria-label="New query tab" disabled={!active} onClick={() => addTab()}><PlusIcon /></Button>
+        </Flex>}
         <div className="[&_textarea]:font-mono [&_textarea]:text-[13px]">
           <TextArea aria-label="Query editor" rows={3} spellCheck={false} value={query}
             onChange={value => { setQuery(value); if (activeId) setLastQueries(queries => ({ ...queries, [activeId]: value })); }}
@@ -575,7 +640,9 @@ function App() {
           {resultBody()}
         </Card>
       </Stack>
-    </AppShell>
+      </main>
+    </div>
+    <Drawer open={drawerOpen && !isMd} onClose={() => setDrawerOpen(false)} title="Connections" side="left" width="max-w-xs" padded={false}>{renderSidebar(() => setDrawerOpen(false), { inDrawer: true, collapsed: false })}</Drawer>
 
     <Modal open={dialogOpen} onClose={() => setDialogOpen(false)} title={editingId ? 'Edit connection' : 'New connection'} as="form" noValidate onSubmit={addConnection} maxWidth="max-w-xl" busy={testState === 'testing'}
       footer={<Flex justify="end" gap={2}><Button type="button" variant="secondary" disabled={testState === 'testing'} onClick={testConnection}>{testState === 'testing' ? 'Testing…' : 'Test connection'}</Button><Button type="button" variant="flat" onClick={() => setDialogOpen(false)}>Cancel</Button><Button type="submit">{editingId ? 'Save changes' : 'Save connection'}</Button></Flex>}>

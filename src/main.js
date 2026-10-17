@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const net = require('net');
@@ -32,7 +32,24 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
 }
 
+function buildAppMenu(theme = 'dark') {
+  const setTheme = mode => mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.send('theme:set', mode);
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
+    { role: 'fileMenu' }, { role: 'editMenu' }, { role: 'viewMenu' },
+    { label: 'Settings', submenu: [{ label: 'Theme', submenu: [
+      { label: 'Light', type: 'radio', checked: theme === 'light', click: () => setTheme('light') },
+      { label: 'Dark', type: 'radio', checked: theme === 'dark', click: () => setTheme('dark') }
+    ] }] },
+    { role: 'windowMenu' },
+    { role: 'help', submenu: [{ label: 'Learn More', click: () => shell.openExternal('https://www.electronjs.org') }] }
+  ]));
+}
+
+ipcMain.on('theme:report', (_event, theme) => { if (theme === 'light' || theme === 'dark') buildAppMenu(theme); });
+
 app.whenReady().then(() => {
+  buildAppMenu();
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

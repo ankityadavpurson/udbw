@@ -10,5 +10,11 @@ contextBridge.exposeInMainWorld('workbench', {
   disconnect: (payload) => ipcRenderer.invoke('db:disconnect', payload),
   query: (payload) => ipcRenderer.invoke('db:query', payload),
   pickServiceAccount: () => ipcRenderer.invoke('db:pick-service-account'),
-  pickSshKey: () => ipcRenderer.invoke('db:pick-ssh-key')
+  pickSshKey: () => ipcRenderer.invoke('db:pick-ssh-key'),
+  reportTheme: theme => ipcRenderer.send('theme:report', theme),
+  onSetTheme: callback => {
+    const handler = (_event, mode) => callback(mode);
+    ipcRenderer.on('theme:set', handler);
+    return () => ipcRenderer.removeListener('theme:set', handler);
+  }
 });
