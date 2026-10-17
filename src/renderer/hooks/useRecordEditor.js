@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { buildDocumentUpdate, buildRecordOp, canEditRecord, inferObject, selectStatement } from '../lib/statements.js';
+import { recordAt } from '../lib/results.js';
 
 // Row selection helpers plus the record viewer and insert / edit / delete dialogs.
 export default function useRecordEditor({ active, tab, runQuery, runMutation, setQuery, setStatus }) {
@@ -17,7 +18,7 @@ export default function useRecordEditor({ active, tab, runQuery, runMutation, se
   const selectedObject = tab.selectedObject ?? inferObject(active, tab.query);
   const selectedCount = selected.length;
   const hasSelection = selectedCount > 0;
-  const docAt = index => result?.json?.[index] ?? result?.rows?.[index];
+  const docAt = index => recordAt(result, index);
   const selectedDocs = selected.map(docAt);
   const selectedJson = selectedCount === 1 ? selectedDocs[0] : null; // view / edit work on exactly one row
   const canEditSelected = selectedCount === 1 && canEditRecord(active, selectedObject, selectedJson);
@@ -41,7 +42,11 @@ export default function useRecordEditor({ active, tab, runQuery, runMutation, se
     if (built.noChange) { setError('Change at least one field before saving.'); return; }
     if (built.error) { setError(built.error); return; }
     setEditorOpen(false); setStatus(`${action === 'insert' ? 'Inserting' : action === 'edit' ? 'Updating' : 'Deleting'} record…`);
-    if (await runMutation(built.op)) { const select = selectStatement(active, object); setQuery(select); await runQuery(select); }
+    if (await runMutation(built.op)) {
+      // A browse tab keeps its page / sort / filter; any other tab is refreshed with a plain select of the object.
+      if (tab.browse && tab.query === tab.browse.generated) await runQuery(tab.query);
+      else { const select = selectStatement(active, object); setQuery(select); await runQuery(select); }
+    }
   }
 
   // Deletes every selected row, one statement each, then refreshes the tab's own query.

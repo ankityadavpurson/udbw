@@ -56,6 +56,13 @@ Create a service account for a Firebase project and download its JSON key file. 
 - SSH tunneling (password or private key) for MySQL, PostgreSQL, Supabase (connection string), and MongoDB.
 - Saved connections, encrypted at rest with Electron `safeStorage` (OS keychain / DPAPI) in the app's user-data folder.
 - Result table with filter, sort, pagination, cell/record viewer, and JSON view.
+- Results are capped (1,000 rows by default; a plain `SELECT` gets a `LIMIT` added) with a **Load more** button, so a huge table never freezes the app.
+- Tables opened from the sidebar get a server-side page / sort / filter bar (`LIMIT … OFFSET`, `ORDER BY`, a `WHERE` filter).
+- **Run** executes the selection or the statement at the cursor (Ctrl/⌘+Enter); **Run all** runs every statement (Ctrl/⌘+Shift+Enter); **Stop** cancels a running query on MySQL, PostgreSQL/Supabase and Supabase REST.
+- Safety: a confirmation before `DELETE`/`UPDATE` without `WHERE`, `DROP`, `TRUNCATE`, and before any data change on a connection marked **Production**; connections can be **Read-only** (enforced in the main process and, for MySQL/PostgreSQL, by a read-only database session).
+- PostgreSQL browser lists tables, views, materialized and foreign views, sequences and functions; columns, keys and indexes load when a table is opened.
+- MongoDB: `find <coll> {filter} SORT {…} PROJECT {…} SKIP n LIMIT n`, `count`, `aggregate`, `distinct`, or shell style `db.users.find({ status: 'active' }).sort({ age: -1 }).limit(20)` (also `insertOne/Many`, `updateOne/Many`, `deleteOne/Many`; `ObjectId()`, `ISODate()` and regex literals work).
+- Firestore: `read <path> WHERE field >= 18 AND … ORDER BY field DESC LIMIT n OFFSET n`, `count <path> WHERE …`, `collections [docPath]` for subcollections, and document paths like `read users/abc`.
 
 ## Security notes
 
@@ -74,4 +81,4 @@ Create a service account for a Firebase project and download its JSON key file. 
 
 ## Not yet included
 
-Inline cell editing, query cancellation, result streaming for large SQL results, SSH host-key verification, schema diagrams, a plugin SDK, and automated tests.
+Inline cell editing, cancelling MongoDB / Firestore queries, true streaming of very large results, schema diagrams, a plugin SDK, and automated tests.

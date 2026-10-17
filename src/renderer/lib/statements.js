@@ -4,6 +4,7 @@ const objectRef = object => ({ name: object.name, schema: object.schema });
 
 // SELECT-style statement used when an object is opened from the sidebar.
 export function selectStatement(active, object) {
+  if (object.type === 'function') return `SELECT pg_get_functiondef(${Number(object.oid)});`;
   if (active?.type === 'mongodb') return `find ${object.name} LIMIT 100`;
   if (active?.type === 'firestore') return `read ${object.name} LIMIT 100`;
   if (isRestSupabase(active)) return `REST: ${object.name} LIMIT 100`;
@@ -82,7 +83,7 @@ export function inferObject(active, query) {
     return rest ? { name: rest[1], type: 'table' } : null;
   }
   if (active?.type !== 'mongodb' && active?.type !== 'firestore') return null;
-  const match = /^\s*(?:find|read)\s+([A-Za-z0-9_.-]+)/i.exec(query || '');
+  const match = /^\s*(?:(?:find|read)\s+|db\.)([A-Za-z0-9_.-]+?)(?:\.find\(|\s|$)/i.exec(query || '');
   return match ? { name: match[1], type: 'collection' } : null;
 }
 

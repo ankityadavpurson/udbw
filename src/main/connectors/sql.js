@@ -9,31 +9,30 @@ function serializeValue(v) {
   return String(v);
 }
 
-function normalizeSqlResult(rows, fields) {
-  if (!Array.isArray(rows)) {
-    const affected = rows?.affectedRows;
-    return { columns: [], rows: [], json: [], message: affected === undefined ? JSON.stringify(rows) : `${affected} row(s) affected`, rowCount: affected ?? 0 };
-  }
-  const columns = fields?.map(f => f.name) || (rows[0] ? Object.keys(rows[0]) : []);
-  return {
-    columns,
-    rows: rows.map(r => columns.map(c => serializeValue(r[c]))),
-    json: rows.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, serializeValue(v)]))),
-    rowCount: rows.length,
-    message: `${rows.length} rows returned`
-  };
+// Rows are sent once, as arrays in column order (the UI builds records from them when it needs to). At most
+// `maxRows` rows are kept; `truncated` tells the UI there were more.
+function shape(columns, allRows, maxRows, extra = {}) {
+  const truncated = allRows.length > maxRows;
+  const rows = (truncated ? allRows.slice(0, maxRows) : allRows).map(row => row.map(serializeValue));
+  return { columns, rows, rowCount: rows.length, truncated, maxRows, message: `${rows.length} rows returned${truncated ? ' (limited)' : ''}`, ...extra };
 }
 
-function normalizePgResult(result) {
-  const columns = result.fields?.map(f => f.name) || (result.rows[0] ? Object.keys(result.rows[0]) : []);
-  const rows = result.rows || [];
-  return {
-    columns,
-    rows: rows.map(r => columns.map(c => serializeValue(r[c]))),
-    json: rows.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, serializeValue(v)]))),
-    rowCount: result.rowCount,
-    message: result.command ? `${result.command}${result.rowCount == null ? '' : ` · ${result.rowCount} row(s)`}` : 'Query completed'
-  };
+// mysql2 with rowsAsArray: rows are arrays and `fields` lists the columns. Write statements return a header object.
+function normalizeSqlResult(rows, fields, maxRows) {
+  if (!Array.isArray(rows)) {
+    const affected = rows?.affectedRows;
+    return { columns: [], rows: [], message: affected === undefined ? 'Statement executed' : `${affected} row(s) affected`, rowCount: affected ?? 0 };
+  }
+  return shape((fields || []).map(f => f.name), rows, maxRows);
+}
+
+// pg with rowMode 'array'. A multi-statement text returns one result per statement; the last one is shown.
+function normalizePgResult(result, maxRows) {
+  const last = Array.isArray(result) ? result[result.length - 1] : result;
+  if (!last) return { columns: [], rows: [], rowCount: 0, message: 'Query completed' };
+  const columns = (last.fields || []).map(f => f.name);
+  if (!columns.length) return { columns: [], rows: [], rowCount: last.rowCount, message: last.command ? `${last.command}${last.rowCount == null ? '' : ` · ${last.rowCount} row(s)`}` : 'Query completed' };
+  return shape(columns, last.rows || [], maxRows);
 }
 
 const toParam = value => (value === undefined ? null : value !== null && typeof value === 'object' ? JSON.stringify(value) : value);
@@ -75,7 +74,7 @@ function buildSqlMutation(dialect, op) {
 
 function mutationResult(action, count) {
   const verb = { insert: 'Inserted', update: 'Updated', delete: 'Deleted' }[action] || 'Changed';
-  return { columns: [], rows: [], json: [], rowCount: count, message: `${verb} ${count ?? 0} row(s)` };
+  return { columns: [], rows: [], rowCount: count, message: `${verb} ${count ?? 0} row(s)` };
 }
 
 module.exports = { serializeValue, normalizeSqlResult, normalizePgResult, buildSqlMutation, mutationResult };

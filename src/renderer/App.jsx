@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ConfirmDialog, CopyIcon, Drawer, EditIcon, RefreshIcon, Stack, StarIcon, Trash2Icon } from 'xedonium';
 import useMediaQuery from 'xedonium/hooks/useMediaQuery';
 import useConnections from './hooks/useConnections.js';
@@ -7,6 +7,8 @@ import useQueryTabs from './hooks/useQueryTabs.js';
 import useRecordEditor from './hooks/useRecordEditor.js';
 import useConnectionDialog from './hooks/useConnectionDialog.js';
 import { selectStatement } from './lib/statements.js';
+import { assessCommand, assessStatement, splitStatements, statementAt } from './lib/sqlScript.js';
+import { buildBrowseQuery, canBrowse, DEFAULT_BROWSE } from './lib/browse.js';
 import { languageFor } from './lib/tokenize.js';
 import { copyToClipboard, downloadCsv, downloadJson } from './lib/exporters.js';
 import TitleBar from './components/TitleBar.jsx';
@@ -27,6 +29,8 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [pendingRun, setPendingRun] = useState(null);   // statements waiting for a confirmation: { statements, reasons, production }
+  const editorRef = useRef(null);
   const isMd = useMediaQuery('(min-width: 768px)');
   const isLg = useMediaQuery('(min-width: 1024px)');
 
@@ -67,13 +71,49 @@ export default function App() {
   }
 
   // Objects open in their own tab; opening the same object again re-runs it in that tab.
-  async function openObject(object) {
-    const statement = selectStatement(active, object);
+  async function openObject(listed) {
+    const object = await tree.describeObject(listed);   // loads columns and primary key first
+    let browse = null;
+    let statement;
+    if (canBrowse(active, object)) { statement = buildBrowseQuery(active, object, DEFAULT_BROWSE); browse = { ...DEFAULT_BROWSE, generated: statement }; }
+    else statement = selectStatement(active, object);
     let target = tabsApi.connTabs.find(t => t.selectedObject && objectId(t.selectedObject) === objectId(object));
     if (target) tabsApi.setActiveTabId(target.id);
     else { target = tabsApi.addTab({ title: object.name, selectedObject: object }, statement); if (!target) return; }
-    tabsApi.patchTab({ query: statement, selectedObject: object, selected: [] }, target.id);
+    tabsApi.patchTab({ query: statement, selectedObject: object, selected: [], browse, hasNext: false }, target.id);
     setStatus(`Browsing ${object.name}…`); await tabsApi.runQuery(statement, target.id);
+  }
+
+  // Which statements a Run should send: the selection (all of it), else the statement at the cursor, or every
+  // statement for Run all. Command languages (MongoDB, Firestore, REST) are never split.
+  function editorStatements(mode) {
+    const dialect = languageFor(active);
+    const target = editorRef.current?.getTarget() || { selection: '', cursor: 0 };
+    if (dialect === 'command') return [(target.selection || tab.query).trim()].filter(Boolean);
+    if (target.selection.trim()) return splitStatements(target.selection, dialect).map(s => s.text);
+    const all = splitStatements(tab.query, dialect);
+    if (mode === 'all') return all.map(s => s.text);
+    const current = statementAt(all, target.cursor);
+    return current ? [current.text] : [];
+  }
+
+  // Asks first when a statement is destructive, or changes data on a connection marked as production.
+  function runEditor(mode = 'current') {
+    if (!active || !isConnected) return;
+    const statements = editorStatements(mode);
+    if (!statements.length) { setStatus('Nothing to run.'); return; }
+    const dialect = languageFor(active);
+    const assessed = statements.map(text => (dialect === 'command' ? assessCommand(text) : assessStatement(text, dialect)));
+    const reasons = assessed.flatMap((item, i) => item.danger.map(reason => (statements.length > 1 ? `Statement ${i + 1}: ${reason}` : reason)));
+    const production = active.environment === 'production' && assessed.some(item => item.write);
+    if (reasons.length || production) setPendingRun({ statements, reasons, production });
+    else tabsApi.runScript(statements);
+  }
+
+  function confirmRun() {
+    const run = pendingRun;
+    setPendingRun(null);
+    if (run) tabsApi.runScript(run.statements);
   }
 
   async function copyText(value) {
@@ -123,12 +163,13 @@ export default function App() {
           <main className="min-w-0 flex-1 overflow-y-auto">
             <Stack gap={0} className="min-h-full">
               <ConnectionToolbar active={active} engine={conn.engine} status={active ? conn.connectionStatus(active.id) : undefined} isConnected={isConnected} busy={busy}
-                showMenuButton={!isMd} onOpenMenu={() => setDrawerOpen(true)} onConnect={connect} onDisconnect={disconnect} onRun={() => tabsApi.runQuery()} menuItems={connectionMenu} />
+                showMenuButton={!isMd} onOpenMenu={() => setDrawerOpen(true)} onConnect={connect} onDisconnect={disconnect} onRun={() => runEditor('current')} onRunAll={() => runEditor('all')} onStop={tabsApi.cancelQuery} menuItems={connectionMenu} />
               <QueryTabs tabs={tabsApi.connTabs} activeTabId={tab.id} canAdd={Boolean(active)} onSelect={tabsApi.setActiveTabId} onClose={tabsApi.closeTab} onAdd={() => tabsApi.addTab()} />
-              <QueryEditor language={languageFor(active)} value={tab.query} onRun={() => tabsApi.runQuery()}
+              <QueryEditor ref={editorRef} language={languageFor(active)} value={tab.query} onRun={runEditor}
                 onChange={value => { tabsApi.setQuery(value); if (activeId) conn.setLastQuery(activeId, value); }} />
-              <ResultsPanel tab={tab} status={status} records={records} isConnected={isConnected} busy={busy}
-                onViewChange={tabsApi.setView} onSelect={tabsApi.setSelected} onRerun={() => tabsApi.runQuery()} onCopyRows={copyText}
+              <ResultsPanel tab={tab} status={status} records={records} isConnected={isConnected} busy={busy} readOnly={Boolean(active?.readOnly)} language={languageFor(active)}
+                onLoadMore={max => tabsApi.runQuery(tab.query, tab.id, { maxRows: max })} onBrowse={tabsApi.browseTo}
+                onViewChange={tabsApi.setView} onSelect={tabsApi.setSelected} onRerun={() => (tab.browse && tab.query === tab.browse.generated ? tabsApi.runQuery() : runEditor('all'))} onCopyRows={copyText}
                 onExportJson={() => downloadJson(tab.result)} onExportCsv={() => downloadCsv(tab.result)} />
             </Stack>
           </main>
@@ -144,6 +185,12 @@ export default function App() {
       <RecordViewerDialog open={records.viewerOpen} onClose={() => records.setViewerOpen(false)} record={records.selectedJson} onCopy={copyText} />
       <ConfirmDialog open={records.bulkOpen} tone="danger" title="Delete records" confirmLabel="Delete" busy={records.bulkBusy} error={records.bulkError} onClose={() => records.setBulkOpen(false)} onConfirm={records.bulkDelete}>
         Delete {records.selectedCount} selected records? This cannot be undone.
+      </ConfirmDialog>
+      <ConfirmDialog open={!!pendingRun} tone="danger" title={pendingRun?.production && !pendingRun?.reasons.length ? 'Change data on production?' : 'Run this?'} confirmLabel="Run anyway" onClose={() => setPendingRun(null)} onConfirm={confirmRun}>
+        <ul className="list-disc space-y-1 pl-5">
+          {pendingRun?.production && <li>“{active?.name}” is marked as a production connection.</li>}
+          {pendingRun?.reasons.map(reason => <li key={reason}>{reason}</li>)}
+        </ul>
       </ConfirmDialog>
       <ConfirmDialog open={!!deleteTarget} tone="danger" title="Delete connection" confirmLabel="Delete" onClose={() => setDeleteTarget(null)} onConfirm={() => deleteConnection(deleteTarget)}>
         Delete connection “{deleteTarget?.name}”? This cannot be undone.

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Flex, HelperText, Loader, Modal, Select, Stack, Field } from 'xedonium';
+import { Alert, Button, Checkbox, Flex, HelperText, Loader, Modal, Select, Stack, Field } from 'xedonium';
 import { engines } from '../../constants.js';
 import ConnectionFields from './ConnectionFields.jsx';
 
@@ -34,6 +34,11 @@ export default function ConnectionDialog({ dialog, groups }) {
         </div>
         {creatingGroup && <Field label="New folder name" value={profile.group || ''} onChange={value => update('group', value)} placeholder="e.g. Production" required={false} />}
         <Select label="Database type" value={profile.type} onChange={selectEngine} options={Object.entries(engines).map(([value, item]) => ({ value, label: item.label }))} />
+        <div className="grid grid-cols-2 items-end gap-3">
+          <Select label="Environment" value={profile.environment || ''} onChange={value => update('environment', value)}
+            options={[{ value: '', label: 'Not set' }, { value: 'development', label: 'Development' }, { value: 'staging', label: 'Staging' }, { value: 'production', label: 'Production' }]} />
+          <Checkbox label="Read-only connection" description="Blocks inserts, updates, deletes and schema changes." checked={Boolean(profile.readOnly)} onChange={value => update('readOnly', value)} />
+        </div>
         <ConnectionFields profile={profile} update={update} onPickServiceAccount={pickServiceAccount} onPickSshKey={pickSshKey} />
         {formError && <Alert tone={testState === 'success' ? 'success' : testState === 'failed' ? 'danger' : 'info'}>{formError}</Alert>}
       </Stack>

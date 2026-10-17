@@ -7,7 +7,8 @@ primary key foreign references index view database schema use show describe expl
 rollback grant revoke if unique check constraint add column to using natural over partition window rename replace temporary temp cascade
 restrict engine charset collate auto_increment`.split(/\s+/));
 
-const COMMANDS = new Set(['find', 'insert', 'update', 'delete', 'collections', 'read', 'create', 'rest:']);
+const COMMANDS = new Set(['find', 'insert', 'update', 'delete', 'collections', 'read', 'create', 'rest:', 'count', 'aggregate', 'distinct']);
+const CLAUSES = new Set(['limit', 'offset', 'skip', 'sort', 'project', 'projection', 'where', 'and', 'order', 'by', 'asc', 'desc', 'true', 'false', 'null']);
 
 const SQL_TOKEN = /(--[^\n]*|#[^\n]*|\/\*[\s\S]*?(?:\*\/|$))|('(?:[^'\\]|\\.|'')*'?)|("(?:[^"\\]|\\.|"")*"?)|(`[^`]*`?)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][\w$]*)(\s*\()?/g;
 
@@ -64,7 +65,7 @@ function tokenizeCommand(code) {
       let kind = null;
       if (wordIndex === 0 && COMMANDS.has(lower)) kind = 'keyword';
       else if (wordIndex === 1 && !word.endsWith(':')) kind = 'tag';
-      else if (lower === 'limit' || lower === 'true' || lower === 'false' || lower === 'null') kind = 'keyword';
+      else if (CLAUSES.has(lower)) kind = 'keyword';
       out.push({ kind, text });
       wordIndex += 1;
     }

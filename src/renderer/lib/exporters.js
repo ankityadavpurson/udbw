@@ -1,3 +1,5 @@
+import { toRecords } from './results.js';
+
 function download(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -7,7 +9,7 @@ function download(blob, filename) {
 
 export function downloadJson(result) {
   if (!result) return;
-  download(new Blob([JSON.stringify(result.json ?? result, null, 2)], { type: 'application/json' }), 'query-results.json');
+  download(new Blob([JSON.stringify(toRecords(result), null, 2)], { type: 'application/json' }), 'query-results.json');
 }
 
 export function downloadCsv(result) {

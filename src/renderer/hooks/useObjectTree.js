@@ -48,10 +48,26 @@ export default function useObjectTree({ active, activeId, markLost, updateProfil
     if (isConnected) await loadObjectTree(profile.id, profile.database || ''); else setObjectTree(null);
   }
 
+  // Columns, keys and indexes are read when a table is opened, not for the whole schema up front.
+  const sameObject = (a, b) => a.name === b.name && (a.schema || '') === (b.schema || '') && a.type === b.type;
+  async function describeObject(object) {
+    const sql = active && ['mysql', 'postgres', 'supabase'].includes(active.type);
+    if (!sql || !['table', 'view'].includes(object.type) || object.columns) return object;
+    const res = await window.workbench.describe({ id: active.id, object: { name: object.name, schema: object.schema, type: object.type } });
+    if (!res.ok) {
+      if (connectionGone(res.error)) markLost(active.id);
+      setStatus(`Could not read the structure of ${object.name}: ${res.error?.message || 'unknown error'}`);
+      return object;
+    }
+    const described = { ...object, ...res.result };
+    setObjectTree(tree => (tree ? { ...tree, objects: tree.objects.map(item => (sameObject(item, object) ? described : item)) } : tree));
+    return described;
+  }
+
   const clear = () => setObjectTree(null);
 
   return {
     objectTree, treeLoading, currentDatabase, currentSchema, objectSearch, setObjectSearch,
-    loadObjectTree, changeDatabase, changeSchema, resetFor, clear
+    loadObjectTree, changeDatabase, changeSchema, resetFor, describeObject, clear
   };
 }

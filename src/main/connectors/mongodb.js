@@ -1,9 +1,11 @@
-const MAX_LIMIT = 1000;
+const { relaxedToJson, closingParen, readString } = require('./relaxed');
+
+const HARD_LIMIT = 100000;
 
 // The driver is loaded on first use to keep app start-up light.
 const driver = () => require('mongodb');
 const ejson = () => driver().BSON.EJSON;
-const parseEjson = text => ejson().parse(text, { relaxed: true });
+const parseEjson = text => ejson().parse(relaxedToJson(text), { relaxed: true });
 const fromPlain = value => ejson().deserialize(value, { relaxed: true });
 
 // Ids inside text commands are percent-encoded by the UI so spaces and symbols survive; typed plain ids work too.
@@ -20,6 +22,11 @@ function idFilter(value) {
   return { _id: text };
 }
 
+// A filter written with a plain _id string also matches an ObjectId.
+function withIdMatch(filter) {
+  return typeof filter?._id === 'string' ? { ...filter, ...idFilter(filter._id) } : filter;
+}
+
 // Documents are shown as relaxed Extended JSON ({"$oid": …}, {"$date": …}) so editing and cloning keep BSON types;
 // the top-level _id stays a plain string because it identifies the row.
 function plain(doc) {
@@ -29,14 +36,130 @@ function plain(doc) {
   return out;
 }
 
-function docResult(docs, message, rowCount) {
+function docResult(docs, message, rowCount, extra = {}) {
   const json = docs.map(plain);
-  return { json, columns: ['_id', 'document'], rows: json.map(d => [String(d._id ?? ''), JSON.stringify(d)]), rowCount, message };
+  return { json, columns: ['_id', 'document'], rows: json.map(d => [String(d._id ?? ''), JSON.stringify(d)]), rowCount, message, ...extra };
 }
 
+// ---- command parsing -------------------------------------------------------------------------------------------
+
+// Reads one { … } or [ … ] value starting at `pos` (strings are skipped). Returns the end index.
+function balancedEnd(text, pos) {
+  const open = text[pos];
+  const close = open === '{' ? '}' : ']';
+  let depth = 0;
+  for (let i = pos; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"' || ch === "'") { i = readString(text, i).end - 1; continue; }
+    if (ch === open || ch === '{' || ch === '[') depth++;
+    else if (ch === '}' || ch === ']') { depth--; if (depth === 0) return ch === close ? i + 1 : -1; }
+  }
+  return -1;
+}
+
+// Keyword form: find <coll> [filter] [SORT {…}] [PROJECT {…}] [SKIP n] [LIMIT n], count <coll> [filter],
+// aggregate <coll> [pipeline], distinct <coll> <field> [filter].
+function parseKeywordRead(verb, text) {
+  const head = /^\w+\s+([a-zA-Z0-9_.-]+)\s*/.exec(text);
+  if (!head) throw new Error(`Usage: ${verb} <collection> …`);
+  const out = { action: verb, collection: head[1] };
+  let rest = text.slice(head[0].length);
+  if (verb === 'distinct') {
+    const field = /^("[^"]+"|'[^']+'|\S+)\s*/.exec(rest);
+    if (!field) throw new Error('Usage: distinct <collection> <field> [filter]');
+    out.field = field[1].replace(/^["']|["']$/g, '');
+    rest = rest.slice(field[0].length);
+  }
+  let pos = 0;
+  const skipSpace = () => { while (/\s/.test(rest[pos] || '')) pos++; };
+  const readValue = () => {
+    skipSpace();
+    if (rest[pos] !== '{' && rest[pos] !== '[') throw new Error('Expected a { } or [ ] value.');
+    const end = balancedEnd(rest, pos);
+    if (end === -1) throw new Error('Unbalanced brackets in the command.');
+    const value = parseEjson(rest.slice(pos, end));
+    pos = end;
+    return value;
+  };
+  skipSpace();
+  if (verb === 'aggregate') { out.pipeline = rest[pos] === '[' ? readValue() : []; skipSpace(); if (pos < rest.length) throw new Error(`Unexpected "${rest.slice(pos)}".`); return out; }
+  if (rest[pos] === '{') out.filter = readValue();
+  if (verb === 'find') {
+    while (true) {
+      skipSpace();
+      if (pos >= rest.length) break;
+      const kw = /^(SORT|PROJECT|PROJECTION|SKIP|LIMIT)\b\s*/i.exec(rest.slice(pos));
+      if (!kw) throw new Error(`Unexpected "${rest.slice(pos).split(/\s/)[0]}". After the filter use SORT, PROJECT, SKIP or LIMIT.`);
+      pos += kw[0].length;
+      const word = kw[1].toUpperCase();
+      if (word === 'SORT') out.sort = readValue();
+      else if (word.startsWith('PROJECT')) out.projection = readValue();
+      else {
+        const num = /^\d+/.exec(rest.slice(pos));
+        if (!num) throw new Error(`${word} needs a number.`);
+        pos += num[0].length;
+        out[word.toLowerCase()] = Number(num[0]);
+      }
+    }
+  } else { skipSpace(); if (pos < rest.length) throw new Error(`Unexpected "${rest.slice(pos)}".`); }
+  return out;
+}
+
+// Shell form: db.<coll>.find({…}, {…}).sort({…}).skip(n).limit(n), .countDocuments, .aggregate, .distinct,
+// .insertOne / .insertMany / .updateOne / .updateMany / .deleteOne / .deleteMany.
+function parseShell(text) {
+  const head = /^db\.([a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*?)\.(\w+)\s*\(/.exec(text);
+  if (!head) throw new Error('Shell commands look like db.collection.find({ … }).');
+  const calls = [];
+  let pos = head[0].length - 1;
+  let name = head[2];
+  while (true) {
+    const close = closingParen(text, pos);
+    const inner = text.slice(pos + 1, close).trim();
+    calls.push({ name, args: inner ? EJSON_ARRAY(inner) : [] });
+    pos = close + 1;
+    const next = /^\s*\.(\w+)\s*\(/.exec(text.slice(pos));
+    if (!next) break;
+    name = next[1];
+    pos += next[0].length - 1;
+  }
+  if (text.slice(pos).trim()) throw new Error(`Unexpected "${text.slice(pos).trim()}".`);
+  const [main, ...chain] = calls;
+  const collection = head[1];
+  const arg = i => main.args[i];
+  const out = { collection };
+  switch (main.name) {
+    case 'find': case 'findOne':
+      Object.assign(out, { action: 'find', filter: arg(0) || {}, projection: arg(1) });
+      if (main.name === 'findOne') out.limit = 1;
+      for (const call of chain) {
+        if (call.name === 'sort') out.sort = call.args[0];
+        else if (call.name === 'skip') out.skip = Number(call.args[0]);
+        else if (call.name === 'limit') out.limit = Number(call.args[0]);
+        else if (call.name === 'project' || call.name === 'projection') out.projection = call.args[0];
+        else throw new Error(`.${call.name}() is not supported after find().`);
+      }
+      return out;
+    case 'countDocuments': case 'count': return { ...out, action: 'count', filter: arg(0) || {} };
+    case 'aggregate': return { ...out, action: 'aggregate', pipeline: Array.isArray(arg(0)) ? arg(0) : main.args };
+    case 'distinct': return { ...out, action: 'distinct', field: String(arg(0)), filter: arg(1) || {} };
+    case 'insertOne': return { ...out, action: 'insertMany', records: [arg(0)] };
+    case 'insertMany': return { ...out, action: 'insertMany', records: arg(0) };
+    case 'updateOne': case 'updateMany':
+      return { ...out, action: main.name === 'updateOne' ? 'updateOne' : 'updateMany', filter: arg(0) || {}, update: arg(1) };
+    case 'deleteOne': case 'deleteMany':
+      return { ...out, action: main.name === 'deleteOne' ? 'deleteOne' : 'deleteMany', filter: arg(0) || {} };
+    default: throw new Error(`db.${collection}.${main.name}() is not supported.`);
+  }
+}
+const EJSON_ARRAY = args => parseEjson(`[${args}]`);
+
+const HELP = 'MongoDB commands: "collections", find <coll> {filter} SORT {…} SKIP n LIMIT n, count <coll>, aggregate <coll> [ … ], distinct <coll> <field>, or db.<coll>.find({…}).';
+
 function parseCommand(query) {
-  const text = query.trim();
-  if (/^collections\s*;?$/i.test(text)) return { action: 'collections' };
+  const text = query.trim().replace(/;\s*$/, '');
+  if (/^collections$/i.test(text)) return { action: 'collections' };
+  if (/^db\./.test(text)) return parseShell(text);
   let m = text.match(/^insert\s+([a-zA-Z0-9_.-]+)\s+(\{.*\})$/is);
   if (m) return { action: 'insert', collection: m[1], record: parseEjson(m[2]) };
   m = text.match(/^update\s+([a-zA-Z0-9_.-]+)\s+(\S+)\s+(\{.*\})$/is);
@@ -47,13 +170,21 @@ function parseCommand(query) {
   }
   m = text.match(/^delete\s+([a-zA-Z0-9_.-]+)\s+(\S+)$/i);
   if (m) return { action: 'delete', collection: m[1], id: decodeId(m[2]) };
-  // find collection_name {"field":"value"} LIMIT 100
-  m = text.match(/^find\s+([a-zA-Z0-9_.-]+)(?:\s+(\{.*\}))?(?:\s+LIMIT\s+(\d+))?$/is);
-  if (!m) throw new Error('MongoDB commands: "collections" or \'find collection_name {"status":"active"} LIMIT 100\'');
-  let filter = m[2] ? parseEjson(m[2]) : {};
-  if (typeof filter._id === 'string') filter = { ...filter, ...idFilter(filter._id) };   // a plain id string also matches an ObjectId
-  return { action: 'find', collection: m[1], filter, limit: Math.min(Number(m[3] || 100), MAX_LIMIT) };
+  const verb = /^(find|count|aggregate|distinct)\b/i.exec(text);
+  if (verb) return parseKeywordRead(verb[1].toLowerCase(), text);
+  throw new Error(HELP);
 }
+
+const WRITES = new Set(['insert', 'update', 'delete', 'insertMany', 'updateOne', 'updateMany', 'deleteOne', 'deleteMany']);
+function isWrite(text) {
+  try {
+    const parsed = parseCommand(text);
+    if (WRITES.has(parsed.action)) return true;
+    return parsed.action === 'aggregate' && (parsed.pipeline || []).some(stage => stage && ('$out' in stage || '$merge' in stage));
+  } catch (_) { return false; }   // an unparseable command runs nothing
+}
+
+// ---- execution -------------------------------------------------------------------------------------------------
 
 async function connect(dial) {
   const { MongoClient } = driver();
@@ -71,34 +202,78 @@ async function close(session) { if (session.client) await session.client.close()
 
 function switchDatabase(session, database) { session.database = database; }
 
-// Writes: { action: 'insert' | 'update' | 'delete', collection, record | update | id }, with BSON values already built.
+// Writes: { action, collection, … } with BSON values already built.
 async function write(session, command) {
   const collection = session.client.db(session.database).collection(command.collection);
-  if (command.action === 'insert') {
-    const doc = { ...command.record };
-    await collection.insertOne(doc);
-    return docResult([doc], 'Inserted 1 document', 1);
+  const counts = (n, what, rowCount = n) => ({ json: [], columns: [], rows: [], rowCount, message: `${what} ${n} document(s)` });
+  switch (command.action) {
+    case 'insert': {
+      const doc = { ...command.record };
+      await collection.insertOne(doc);
+      return docResult([doc], 'Inserted 1 document', 1);
+    }
+    case 'insertMany': {
+      if (!command.records?.length) throw new Error('Nothing to insert.');
+      const res = await collection.insertMany(command.records.map(r => ({ ...r })));
+      return counts(res.insertedCount, 'Inserted');
+    }
+    case 'update': {
+      const filter = idFilter(command.id);
+      const updated = await collection.updateOne(filter, command.update);
+      const docs = await collection.find(filter).limit(1).toArray();
+      return docResult(docs, `Updated ${updated.modifiedCount} document(s)`, updated.modifiedCount);
+    }
+    case 'updateOne': case 'updateMany': {
+      if (!command.update) throw new Error('An update document is required.');
+      const update = Object.keys(command.update).some(key => key.startsWith('$')) ? command.update : { $set: command.update };
+      const res = await collection[command.action](withIdMatch(command.filter), update);
+      return counts(res.modifiedCount, 'Updated');
+    }
+    case 'deleteOne': case 'deleteMany': {
+      const res = await collection[command.action](withIdMatch(command.filter));
+      return counts(res.deletedCount, 'Deleted');
+    }
+    default: {
+      const deleted = await collection.deleteOne(idFilter(command.id));
+      return counts(deleted.deletedCount, 'Deleted');
+    }
   }
-  if (command.action === 'update') {
-    const filter = idFilter(command.id);
-    const updated = await collection.updateOne(filter, command.update);
-    const docs = await collection.find(filter).limit(1).toArray();
-    return docResult(docs, `Updated ${updated.modifiedCount} document(s)`, updated.modifiedCount);
-  }
-  const deleted = await collection.deleteOne(idFilter(command.id));
-  return { json: [], columns: [], rows: [], rowCount: deleted.deletedCount, message: `Deleted ${deleted.deletedCount} document(s)` };
 }
 
-async function query(session, text) {
+async function query(session, text, { maxRows = 1000 } = {}) {
   const parsed = parseCommand(text);
   const db = session.client.db(session.database);
   if (parsed.action === 'collections') {
     const names = await db.listCollections({}, { nameOnly: true }).toArray();
     return { json: names, columns: ['name'], rows: names.map(x => [x.name]), message: `${names.length} collections` };
   }
-  if (parsed.action !== 'find') return write(session, parsed);
-  const docs = await db.collection(parsed.collection).find(parsed.filter).limit(parsed.limit).toArray();
-  return docResult(docs, `${docs.length} documents`);
+  const collection = parsed.collection && db.collection(parsed.collection);
+  if (parsed.action === 'find') {
+    const limit = Math.min(parsed.limit ?? maxRows, HARD_LIMIT);
+    let cursor = collection.find(withIdMatch(parsed.filter || {}), parsed.projection ? { projection: parsed.projection } : {});
+    if (parsed.sort) cursor = cursor.sort(parsed.sort);
+    if (parsed.skip) cursor = cursor.skip(parsed.skip);
+    const docs = await cursor.limit(limit).toArray();
+    return docResult(docs, `${docs.length} documents`, docs.length, { truncated: parsed.limit === undefined && docs.length === limit, maxRows });
+  }
+  if (parsed.action === 'count') {
+    const n = await collection.countDocuments(withIdMatch(parsed.filter || {}));
+    return { columns: ['count'], rows: [[String(n)]], rowCount: 1, message: `${n} matching documents` };
+  }
+  if (parsed.action === 'distinct') {
+    const values = await collection.distinct(parsed.field, withIdMatch(parsed.filter || {}));
+    const shown = values.slice(0, maxRows).map(v => (v !== null && typeof v === 'object' ? JSON.stringify(JSON.parse(ejson().stringify(v, { relaxed: true }))) : String(v)));
+    return { columns: [parsed.field], rows: shown.map(v => [v]), rowCount: shown.length, truncated: values.length > maxRows, maxRows, message: `${values.length} distinct values` };
+  }
+  if (parsed.action === 'aggregate') {
+    const writes = parsed.pipeline.some(stage => stage && ('$out' in stage || '$merge' in stage));
+    const pipeline = writes ? parsed.pipeline : [...parsed.pipeline, { $limit: maxRows + 1 }];
+    const docs = await collection.aggregate(pipeline, { allowDiskUse: true }).toArray();
+    if (writes) return { json: [], columns: [], rows: [], rowCount: 0, message: 'Aggregation written' };
+    const truncated = docs.length > maxRows;
+    return docResult(truncated ? docs.slice(0, maxRows) : docs, `${Math.min(docs.length, maxRows)} documents`, Math.min(docs.length, maxRows), { truncated, maxRows });
+  }
+  return write(session, parsed);
 }
 
 // Structured edit from the UI: { action, object: { name }, record?, id?, changes?, unset? } (values in Extended JSON).
@@ -125,4 +300,4 @@ async function discover(session, database) {
   return { databases, schemas: [], objects: collections.map(c => ({ name: c.name, type: 'collection', metadata: c.type || '' })), message };
 }
 
-module.exports = { connect, close, query, mutate, switchDatabase, discover, parseCommand, idFilter, plain };
+module.exports = { connect, close, query, mutate, switchDatabase, discover, isWrite, parseCommand, idFilter, plain };

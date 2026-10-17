@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { forwardRef, useImperativeHandle, useRef } from 'react';
 import tokenizeQuery from '../../lib/tokenize.js';
 
 // Segment colours come from xedonium's theme-aware token variables (--xd-tok-*), so they follow light / dark.
@@ -6,10 +6,20 @@ const colorOf = kind => (kind ? `var(--xd-tok-${kind})` : undefined);
 
 // Plain textarea with a coloured copy of its text drawn underneath: the textarea's own text is transparent,
 // so you see the colours while the caret, selection and typing all stay native.
-export default function QueryEditor({ value, onChange, onRun, language }) {
+const QueryEditor = forwardRef(function QueryEditor({ value, onChange, onRun, language }, ref) {
   const textareaRef = useRef(null);
   const highlightRef = useRef(null);
   const lines = tokenizeQuery(value, language);
+
+  // What a Run should use: the selected text if there is any, otherwise the cursor position.
+  useImperativeHandle(ref, () => ({
+    getTarget() {
+      const textarea = textareaRef.current;
+      const start = textarea?.selectionStart ?? 0;
+      const end = textarea?.selectionEnd ?? 0;
+      return { selection: end > start ? value.slice(start, end) : '', cursor: end };
+    }
+  }), [value]);
 
   const syncScroll = () => {
     const textarea = textareaRef.current;
@@ -30,8 +40,10 @@ export default function QueryEditor({ value, onChange, onRun, language }) {
       </pre>
       <textarea ref={textareaRef} aria-label="Query editor" spellCheck={false} value={value} onScroll={syncScroll}
         onChange={e => onChange(e.target.value)}
-        onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); onRun(); } }}
+        onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); onRun(e.shiftKey ? 'all' : 'current'); } }}
         className={`${layer} resize-none overflow-auto border-0 bg-transparent text-transparent caret-[rgb(var(--color-app-text))] outline-none selection:bg-app-soft/40 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-app-strong`} />
     </div>
   );
-}
+});
+
+export default QueryEditor;

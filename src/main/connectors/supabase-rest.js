@@ -30,6 +30,16 @@ async function connect(dial) {
 
 async function close() {}
 
+const WRITES = new Set(['insert', 'update', 'delete']);
+const isWrite = text => { try { return WRITES.has(parseCommand(text).action); } catch (_) { return false; } };
+
+// Aborts the request in flight (the HTTP call is dropped; the server may still finish it).
+async function cancel(session) {
+  if (!session.abort) return false;
+  session.abort.abort();
+  return true;
+}
+
 const VERBS = { read: 'Read', insert: 'Inserted', update: 'Updated', delete: 'Deleted' };
 
 async function run(session, command) {
@@ -38,11 +48,16 @@ async function run(session, command) {
     if (command.id === undefined || command.id === null || command.id === '') throw new Error('The selected record does not include an identifier needed for this operation.');
     return command.keyColumn || 'id';
   };
+  const controller = new AbortController();
+  session.abort = controller;
+  const { signal } = controller;
   let response;
-  if (command.action === 'insert') response = await rest.from(command.table).insert(command.record).select();
-  else if (command.action === 'update') response = await rest.from(command.table).update(command.changes).eq(needKey(), command.id).select();
-  else if (command.action === 'delete') response = await rest.from(command.table).delete().eq(needKey(), command.id).select();
-  else response = await rest.from(command.table).select('*', { count: 'exact' }).limit(command.limit);
+  try {
+    if (command.action === 'insert') response = await rest.from(command.table).insert(command.record).select().abortSignal(signal);
+    else if (command.action === 'update') response = await rest.from(command.table).update(command.changes).eq(needKey(), command.id).select().abortSignal(signal);
+    else if (command.action === 'delete') response = await rest.from(command.table).delete().eq(needKey(), command.id).select().abortSignal(signal);
+    else response = await rest.from(command.table).select('*', { count: 'exact' }).limit(command.limit).abortSignal(signal);
+  } finally { session.abort = null; }
   const { data, error, count } = response;
   if (error) throw error;
   const rows = data || [];
@@ -64,4 +79,4 @@ async function discover() {
   return { databases: [], schemas: [], objects: [], message: 'Object discovery requires a PostgreSQL connection string. REST mode only exposes tables allowed by the API key.' };
 }
 
-module.exports = { connect, close, query, mutate, discover, parseCommand };
+module.exports = { connect, close, query, cancel, mutate, discover, isWrite, parseCommand };

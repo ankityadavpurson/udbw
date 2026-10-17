@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('workbench', {
   disconnect: (payload) => ipcRenderer.invoke('db:disconnect', payload),
   query: (payload) => ipcRenderer.invoke('db:query', payload),
   mutate: (payload) => ipcRenderer.invoke('db:mutate', payload),
+  cancel: (payload) => ipcRenderer.invoke('db:cancel', payload),
+  describe: (payload) => ipcRenderer.invoke('db:describe', payload),
   pickServiceAccount: () => ipcRenderer.invoke('db:pick-service-account'),
   pickSshKey: () => ipcRenderer.invoke('db:pick-ssh-key'),
   appReady: () => ipcRenderer.send('app:ready'),

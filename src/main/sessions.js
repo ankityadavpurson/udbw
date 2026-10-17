@@ -105,8 +105,10 @@ async function dropSession(id, s) {
 // request once on a fresh connection; otherwise the error is flagged `lost` and the next request reconnects.
 async function withSession(id, run, { retry = false } = {}) {
   let s = await liveSession(id);
+  s.cancelRequested = false;
   try { return await run(s); }
   catch (err) {
+    if (s.cancelRequested) { s.cancelRequested = false; throw Object.assign(new Error('Query cancelled.'), { cancelled: true }); }
     if (!isTransportError(err, s.type)) throw err;
     await dropSession(id, s);
     if (!retry) { err.lost = true; throw err; }
@@ -117,6 +119,17 @@ async function withSession(id, run, { retry = false } = {}) {
       throw second;
     }
   }
+}
+
+// Stops the statement a connection is running. Resolves false when the database cannot do that.
+async function cancel(id) {
+  const s = sessions.get(id);
+  if (!s) throw notConnected();
+  const connector = connectorFor(s.type);
+  if (!connector.cancel) return false;
+  s.cancelRequested = true;
+  try { return await connector.cancel(s); }
+  catch (err) { s.cancelRequested = false; throw err; }
 }
 
 // PostgreSQL cannot change database on a live connection, so it reconnects; MySQL switches in place.
@@ -143,4 +156,4 @@ async function closeAll() {
   await Promise.all(open.map(s => closeSession(s).catch(() => {})));
 }
 
-module.exports = { connectorFor, connect, disconnect, test, withSession, switchDatabase, closeAll };
+module.exports = { connectorFor, connect, disconnect, test, withSession, cancel, switchDatabase, closeAll };

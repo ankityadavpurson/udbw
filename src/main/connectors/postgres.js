@@ -1,4 +1,5 @@
 const { normalizePgResult, buildSqlMutation, mutationResult } = require('./sql');
+const { capSql, sqlIsWrite } = require('../sqlText');
 
 // When the form's TLS options are on they decide verification, so drop `sslmode=` from the string: pg would otherwise
 // let it override them (sslmode=require acts as verify-full and rejects Supabase's own CA).
@@ -21,7 +22,10 @@ async function openChecked(dial, tunnel, defaultSsl) {
   // Without a listener a dropped connection would be an uncaught exception in the main process.
   client.on('error', err => console.error('[pg] connection error', err.message));
   await client.connect();
-  try { await client.query('SELECT 1'); } catch (err) { await client.end().catch(() => {}); throw err; }
+  try {
+    await client.query('SELECT 1');
+    if (dial.readOnly) await client.query('SET default_transaction_read_only = on');
+  } catch (err) { await client.end().catch(() => {}); throw err; }
   return client;
 }
 
@@ -31,7 +35,7 @@ async function connect(dial, tunnel, type = 'postgres') {
   return { type, client: await openChecked(dial, tunnel, defaultSsl), defaultSsl };
 }
 
-// A second connection used for the object browser, so a long-running query never blocks a refresh.
+// A second connection used for the object browser and for cancelling, so a long-running query never blocks them.
 function meta(session) {
   if (!session.meta) session.meta = openChecked(session.dial, session.tunnel, session.defaultSsl).catch(err => { session.meta = null; throw err; });
   return session.meta;
@@ -42,8 +46,20 @@ async function close(session) {
   if (session.client) await session.client.end();
 }
 
-async function query(session, text) {
-  return normalizePgResult(await session.client.query(text));
+const isWrite = text => sqlIsWrite(text, 'postgres');
+
+async function query(session, text, { maxRows = 1000 } = {}) {
+  const capped = capSql(text, 'postgres', maxRows) || text;
+  return normalizePgResult(await session.client.query({ text: capped, rowMode: 'array' }), maxRows);
+}
+
+// Stops the statement the main connection is running (the connection itself stays open).
+async function cancel(session) {
+  const pid = session.client.processID;
+  if (!pid) return false;
+  const client = await meta(session);
+  await client.query('SELECT pg_cancel_backend($1)', [pid]);
+  return true;
 }
 
 async function mutate(session, op) {
@@ -52,25 +68,55 @@ async function mutate(session, op) {
   return mutationResult(op.action, result.rowCount);
 }
 
+const KIND = {
+  r: { type: 'table', metadata: '' }, p: { type: 'table', metadata: 'partitioned table' }, f: { type: 'table', metadata: 'foreign table' },
+  v: { type: 'view', metadata: '' }, m: { type: 'view', metadata: 'materialized view' }, S: { type: 'sequence', metadata: '' }
+};
+
+// Lists tables, views (including materialized and foreign ones), sequences and functions straight from the catalogs, so
+// objects the role cannot read still show up. Columns and keys are loaded per table when it is opened (see describe).
 async function discover(session, database, schema) {
   const client = await meta(session);
   const dbResult = await client.query('SELECT datname AS name FROM pg_database WHERE datistemplate = false ORDER BY datname');
-  const selected = database || session.profile.database || 'postgres';
-  const schemaResult = await client.query("SELECT schema_name AS name FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema','pg_catalog') ORDER BY schema_name");
-  const params = schema ? [selected, schema] : [selected];
-  const tableResult = await client.query(
-    `SELECT table_schema AS schema, table_name AS name, table_type AS "objectType" FROM information_schema.tables WHERE table_catalog = $1 AND table_schema NOT IN ('information_schema','pg_catalog')${schema ? ' AND table_schema = $2' : ''} ORDER BY table_schema, table_name`, params
+  const schemaResult = await client.query("SELECT nspname AS name FROM pg_namespace WHERE nspname <> 'information_schema' AND nspname !~ '^pg_' ORDER BY nspname");
+  const params = schema ? [schema] : [];
+  const only = schema ? ' AND n.nspname = $1' : '';
+  const relations = await client.query(
+    `SELECT n.nspname AS schema, c.relname AS name, c.relkind AS kind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE c.relkind IN ('r','p','v','m','f','S') AND n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'${only} ORDER BY n.nspname, c.relname`, params
   );
-  const columnResult = await client.query(`SELECT table_schema AS schema, table_name AS table, column_name AS column FROM information_schema.columns WHERE table_catalog = $1 AND table_schema NOT IN ('information_schema','pg_catalog')${schema ? ' AND table_schema = $2' : ''} ORDER BY ordinal_position`, params);
-  const keyResult = await client.query(`SELECT tc.table_schema AS schema, tc.table_name AS table, kcu.column_name AS column FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema AND tc.table_name=kcu.table_name WHERE tc.constraint_type='PRIMARY KEY' AND tc.table_catalog=$1${schema ? ' AND tc.table_schema=$2' : ''}`, params);
+  const routines = await client.query(
+    `SELECT n.nspname AS schema, p.proname AS name, p.oid::int AS oid, p.prokind AS kind, pg_get_function_identity_arguments(p.oid) AS args
+     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE p.prokind IN ('f','p') AND n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'${only}
+       AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')
+     ORDER BY n.nspname, p.proname LIMIT 2000`, params
+  );
+  const objects = [
+    ...relations.rows.map(r => ({ name: r.name, schema: r.schema, ...KIND[r.kind] })),
+    ...routines.rows.map(r => ({ name: `${r.name}(${r.args})`, schema: r.schema, type: 'function', metadata: r.kind === 'p' ? 'procedure' : 'function', oid: r.oid }))
+  ];
+  return { databases: dbResult.rows.map(r => r.name), schemas: schemaResult.rows.map(r => r.name), objects, message: '' };
+}
+
+async function describe(session, object) {
+  const client = await meta(session);
+  const schema = object.schema || 'public';
+  const columns = await client.query(
+    `SELECT a.attname AS name, pg_catalog.format_type(a.atttypid, a.atttypmod) AS type, NOT a.attnotnull AS nullable
+     FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`, [schema, object.name]
+  );
+  const keys = await client.query(
+    `SELECT a.attname AS name FROM pg_index i JOIN pg_class c ON c.oid = i.indrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+     JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey::int2[])
+     WHERE i.indisprimary AND n.nspname = $1 AND c.relname = $2 ORDER BY array_position(i.indkey::int2[], a.attnum)`, [schema, object.name]
+  );
+  const indexes = await client.query('SELECT indexname AS name, indexdef AS definition FROM pg_indexes WHERE schemaname = $1 AND tablename = $2 ORDER BY indexname', [schema, object.name]);
   return {
-    databases: dbResult.rows.map(r => r.name), schemas: schemaResult.rows.map(r => r.name), message: '',
-    objects: tableResult.rows.map(r => ({
-      name: r.name, schema: r.schema, type: String(r.objectType).toLowerCase() === 'view' ? 'view' : 'table',
-      columns: columnResult.rows.filter(c => c.schema === r.schema && c.table === r.name).map(c => c.column),
-      primaryKey: keyResult.rows.filter(k => k.schema === r.schema && k.table === r.name).map(k => k.column)
-    }))
+    columns: columns.rows.map(c => c.name), columnInfo: columns.rows.map(c => ({ name: c.name, type: c.type, nullable: c.nullable })),
+    primaryKey: keys.rows.map(k => k.name), indexes: indexes.rows.map(i => ({ name: i.name, definition: i.definition }))
   };
 }
 
-module.exports = { connect, close, query, mutate, discover };
+module.exports = { connect, close, query, cancel, mutate, discover, describe, isWrite };

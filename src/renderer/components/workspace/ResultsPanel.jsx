@@ -4,11 +4,14 @@ import {
   HelperText, Loader, PlusIcon, RefreshIcon, Stack, ToggleButton, ToggleButtonGroup, Trash2Icon
 } from 'xedonium';
 import { engines } from '../../constants.js';
-import { isDocumentResult, toTable } from '../../lib/results.js';
+import { isDocumentResult, toRecords, toTable } from '../../lib/results.js';
+import BrowseBar from './BrowseBar.jsx';
 import DocumentList from './DocumentList.jsx';
 import NestedValue, { plainText } from './NestedValue.jsx';
 
-export default function ResultsPanel({ tab, status, records, isConnected, busy, onViewChange, onSelect, onRerun, onCopyRows, onExportJson, onExportCsv }) {
+const MAX_LOAD = 100000;
+
+export default function ResultsPanel({ tab, status, records, isConnected, busy, readOnly, language, onViewChange, onSelect, onRerun, onCopyRows, onExportJson, onExportCsv, onLoadMore, onBrowse }) {
   const { result, error, view, meta, selected } = tab;
   // Only show the loader for queries that take a moment, so quick ones don't flash.
   const [slow, setSlow] = useState(false);
@@ -20,6 +23,20 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
   const { hasSelection, selectedCount, selectedDocs, selectedJson, canEditSelected, canDeleteSelected, openEditor, setViewerOpen, setBulkOpen } = records;
 
   const table = toTable(result);
+  // Browse mode: the toolbar drives the tab's own query, so it only shows while the query is still the generated one.
+  const browsing = Boolean(tab.browse && tab.query === tab.browse.generated);
+  const browseColumns = tab.selectedObject?.columns?.length ? tab.selectedObject.columns : table.columns.filter(column => column !== 'document');
+  const nextMax = Math.min((result?.maxRows || 1000) * 5, MAX_LOAD);
+  const limitNote = result?.truncated && !tab.running ? (
+    <div className="px-2 pt-2">
+      <Alert tone="info" title={`Showing the first ${(result.rowCount ?? result.rows?.length ?? 0).toLocaleString()} rows`}>
+        <Flex gap={2} align="center" wrap>
+          <span>There are more. Narrow the query, or load a bigger slice.</span>
+          {(result.maxRows || 1000) < MAX_LOAD && <span className="compact-buttons"><Button variant="secondary" disabled={busy} onClick={() => onLoadMore(nextMax)}>Load up to {nextMax.toLocaleString()}</Button></span>}
+        </Flex>
+      </Alert>
+    </div>
+  ) : null;
   const columns = table.columns.map((column, j) => ({
     key: `c${j}`, header: column, sortable: true, accessor: row => plainText(row[`c${j}`]),
     render: row => <div className="max-w-[26rem]"><NestedValue value={row[`c${j}`]} /></div>
@@ -37,21 +54,21 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
         <Flex gap={2} wrap justify="center">{Object.values(engines).map(x => <Chip key={x.label}>{x.label}</Chip>)}</Flex>
       </Stack>
     );
-    if (view === 'json' && isDocumentResult(result)) return <DocumentList documents={result.json} canEdit={Boolean(records.selectedObject) && isConnected} onUpdate={records.updateDocument} onClone={records.cloneDocument} onDelete={records.deleteDocument} onInsert={() => records.openEditor('insert')} />;
-    if (view === 'json') return <div className="py-2"><CodeDisplay language="json" code={JSON.stringify(result.json ?? { columns: result.columns, rows: result.rows, message: result.message }, null, 2)} maxHeight="70vh" lineNumbers copyable /></div>;
+    if (view === 'json' && isDocumentResult(result)) return <DocumentList documents={result.json} canEdit={Boolean(records.selectedObject) && isConnected && !readOnly} onUpdate={records.updateDocument} onClone={records.cloneDocument} onDelete={records.deleteDocument} onInsert={() => records.openEditor('insert')} />;
+    if (view === 'json') return <div className="py-2"><CodeDisplay language="json" code={JSON.stringify(table.columns.length || result.json ? toRecords(result) : { message: result.message }, null, 2)} maxHeight="70vh" lineNumbers copyable /></div>;
     if (!columns.length) return <Stack gap={1} className="px-6 py-10 text-center"><h2 className="text-base font-semibold">{result.message || 'Command completed'}</h2><HelperText>No tabular rows returned.</HelperText></Stack>;
     return (
       <Stack gap={2} className="py-2">
         <Flex gap={2} wrap align="center" className="compact-buttons px-2">
-          <Button variant="secondary" disabled={!records.selectedObject || records.selectedObject.type === 'view'} onClick={() => openEditor('insert')}><PlusIcon /> Insert</Button>
-          <Button variant="secondary" disabled={!canEditSelected} onClick={() => openEditor('edit')}><EditIcon /> Edit</Button>
-          <Button variant="danger" disabled={!canDeleteSelected} onClick={() => (selectedCount > 1 ? setBulkOpen(true) : openEditor('delete'))}><Trash2Icon /> {selectedCount > 1 ? `Delete ${selectedCount}` : 'Delete'}</Button>
+          <Button variant="secondary" disabled={readOnly || !records.selectedObject || !['table', 'collection'].includes(records.selectedObject.type)} onClick={() => openEditor('insert')}><PlusIcon /> Insert</Button>
+          <Button variant="secondary" disabled={readOnly || !canEditSelected} onClick={() => openEditor('edit')}><EditIcon /> Edit</Button>
+          <Button variant="danger" disabled={readOnly || !canDeleteSelected} onClick={() => (selectedCount > 1 ? setBulkOpen(true) : openEditor('delete'))}><Trash2Icon /> {selectedCount > 1 ? `Delete ${selectedCount}` : 'Delete'}</Button>
           <Divider orientation="vertical" className="h-6" />
           <Button variant="secondary" disabled={selectedCount !== 1} onClick={() => setViewerOpen(true)}><EyeIcon /> View record</Button>
           <Button variant="secondary" disabled={!hasSelection} onClick={() => onCopyRows(selectedCount === 1 ? selectedJson : selectedDocs)}><CopyIcon /> {selectedCount > 1 ? 'Copy rows' : 'Copy row'}</Button>
           <Button variant="flat" disabled={!isConnected || busy} tooltip="Re-run query" onClick={onRerun}><RefreshIcon /></Button>
         </Flex>
-        <DataGrid columns={columns} rows={rows} rowKey="__i" selectable pageSize={10} pageSizeOptions={[10, 25, 50, 100]} hideFooterWhenSinglePage
+        <DataGrid columns={columns} rows={rows} rowKey="__i" selectable pageSize={browsing ? tab.browse.pageSize : 10} pageSizeOptions={browsing ? undefined : [10, 25, 50, 100]} hideFooterWhenSinglePage
           selected={selected} onSelectionChange={onSelect}
           empty="No rows returned." caption="Query results"
           className="compact-grid !gap-2 [&_div.overflow-x-auto]:!border-x-0 [&>div:last-child]:px-2" />
@@ -70,6 +87,8 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
         <ToggleButtonGroup exclusive aria-label="Result view" value={view} onChange={value => value && onViewChange(value)}><ToggleButton value="table">Table</ToggleButton><ToggleButton value="json">JSON</ToggleButton></ToggleButtonGroup>
         <ActionMenu label="Export results" variant="secondary" placement="bottom-end" trigger={<><DownloadIcon /> Export</>} items={exportItems} />
       </Flex>}>
+      {browsing && <BrowseBar browse={tab.browse} columns={browseColumns} language={language} loading={tab.running} hasNext={tab.hasNext} onChange={onBrowse} />}
+      {limitNote}
       {body()}
     </Card>
   );

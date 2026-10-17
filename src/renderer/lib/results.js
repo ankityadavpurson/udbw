@@ -11,6 +11,21 @@ export function autoView(result) {
   return isDocumentResult(result) ? 'json' : 'table';
 }
 
+// One row as a { column: value } record. SQL results carry only column names and row arrays, so records are built
+// on demand; document results (MongoDB, Firestore, REST) already carry their records in `json`.
+export function recordAt(result, index) {
+  if (!result) return undefined;
+  if (result.json) return result.json[index];
+  const row = result.rows?.[index];
+  if (!row) return undefined;
+  return Object.fromEntries((result.columns || []).map((column, i) => [column, row[i]]));
+}
+
+export function toRecords(result) {
+  if (!result) return [];
+  return result.json ?? (result.rows || []).map((_, index) => recordAt(result, index));
+}
+
 // Table form of a result. Documents are flattened to one column per top-level field.
 export function toTable(result) {
   if (!result) return { columns: [], rows: [] };

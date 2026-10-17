@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { engines, blankTab } from '../constants.js';
 import { autoView } from '../lib/results.js';
+import { buildBrowseQuery } from '../lib/browse.js';
 
 // The main process re-opens a dropped connection on the next request; `unreachable` means that failed (or there was none).
 const connectionGone = error => Boolean(error?.unreachable) || /not connected/i.test(error?.message || '');
@@ -11,7 +12,7 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
   const makeTab = (connId, queryText, extra = {}) => ({
     id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, connId,
     title: extra.title ?? `Query ${(tabCounter.current[connId] = (tabCounter.current[connId] || 0) + 1)}`,
-    query: queryText, result: null, error: '', meta: 'No query executed', view: 'table', viewPinned: false, running: false, selected: [], selectedObject: null, ...extra
+    query: queryText, result: null, error: '', meta: 'No query executed', view: 'table', viewPinned: false, running: false, selected: [], selectedObject: null, browse: null, hasNext: false, ...extra
   });
   const [initialTab] = useState(() => makeTab(null, engines.mysql.query));
   const [tabs, setTabs] = useState([initialTab]);
@@ -45,17 +46,18 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
 
   function closeTab(id) {
     const mine = tabs.filter(t => t.connId === activeId);
-    if (mine.length <= 1) { patchTab({ query: active ? engines[active.type].query : '', result: null, error: '', meta: 'No query executed', selected: [], selectedObject: null }, id); return; }
+    if (mine.length <= 1) { patchTab({ query: active ? engines[active.type].query : '', result: null, error: '', meta: 'No query executed', selected: [], selectedObject: null, browse: null, hasNext: false }, id); return; }
     const index = mine.findIndex(t => t.id === id);
     setTabs(all => all.filter(t => t.id !== id));
     if (id === tab.id) setActiveTabId((mine[index + 1] ?? mine[index - 1]).id);
   }
 
   const removeConnectionTabs = connId => setTabs(all => all.filter(t => t.connId !== connId));
-  const resetConnectionTabs = (connId, type) => setTabs(all => all.map(t => t.connId === connId ? { ...t, query: engines[type].query, result: null, error: '', selected: [] } : t));
+  const resetConnectionTabs = (connId, type) => setTabs(all => all.map(t => t.connId === connId ? { ...t, query: engines[type].query, result: null, error: '', selected: [], browse: null, hasNext: false } : t));
 
-  // Runs one request against the tab's connection and shows its outcome in that tab.
-  async function runCall(call, tabId) {
+  // Runs one request against the tab's connection and shows its outcome in that tab. `statement` is the text that was
+  // sent (used to recognise a browse query); `prefix` labels errors of one statement inside a script.
+  async function runCall(call, tabId, { statement, prefix = '', suffix = '' } = {}) {
     if (!active || !isConnected) return false;
     const patch = changes => patchTab(changes, tabId);
     setBusy(true); setStatus('Executing…'); patch({ error: '', running: true }); const started = performance.now();
@@ -63,19 +65,47 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
     if (!res.ok) {
       const message = res.error.message || 'Unknown error';
       const note = res.error.lost ? '\n\nThe connection dropped. It will reconnect the next time you run something.' : '';
-      patch({ error: `${message}${res.error.code ? `\n\nCode: ${res.error.code}` : ''}${note}`, meta: 'Query failed', result: null, running: false }); setStatus(`Error: ${message}`);
+      const head = prefix ? `${prefix}\n\n` : '';
+      const code = res.error.code ? `\n\nCode: ${res.error.code}` : '';
+      patch({ error: `${head}${message}${code}${note}`, meta: res.error.cancelled ? 'Cancelled' : 'Query failed', result: null, running: false });
+      setStatus(res.error.cancelled ? 'Query cancelled' : `Error: ${message}`);
       if (connectionGone(res.error)) onConnectionLost(active.id);
       return false;
     }
     const data = { ...res.result, elapsedMs: Math.round(performance.now() - started) };
-    setTabs(all => all.map(t => t.id === tabId ? { ...t, result: data, meta: `${data.message || 'Completed'} · ${data.elapsedMs} ms`, selected: [], running: false, view: t.viewPinned ? t.view : autoView(data) } : t));
+    setTabs(all => all.map(t => {
+      if (t.id !== tabId) return t;
+      // A browse query asks for one row more than a page; the extra row only says "there is a next page".
+      const browse = t.browse && statement && statement === t.browse.generated ? t.browse : null;
+      let shown = data;
+      let hasNext = false;
+      if (browse && data.rows?.length > browse.pageSize) {
+        hasNext = true;
+        shown = { ...data, rows: data.rows.slice(0, browse.pageSize), json: data.json?.slice(0, browse.pageSize), rowCount: browse.pageSize };
+      }
+      return { ...t, result: shown, hasNext, meta: `${data.message || 'Completed'} · ${data.elapsedMs} ms${suffix}`, selected: [], running: false, view: t.viewPinned ? t.view : autoView(shown) };
+    }));
     setStatus('Query completed');
     return true;
   }
 
-  function runQuery(statement = tab.query, tabId = tab.id) {
+  // `maxRows` raises the row cap (Load more); without it the default cap applies.
+  function runQuery(statement = tab.query, tabId = tab.id, options = {}) {
     if (!active || !statement.trim()) return Promise.resolve(false);
-    return runCall(() => window.workbench.query({ id: active.id, query: statement.trim() }), tabId);
+    const text = statement.trim();
+    return runCall(() => window.workbench.query({ id: active.id, query: text, maxRows: options.maxRows }), tabId, { statement, ...options });
+  }
+
+  // Runs several statements one after the other, stopping at the first failure; the tab ends up showing the last result.
+  async function runScript(statements, tabId = tab.id) {
+    const total = statements.length;
+    for (let i = 0; i < total; i += 1) {
+      if (total > 1) setStatus(`Running statement ${i + 1} of ${total}…`);
+      const ok = await runQuery(statements[i], tabId, total > 1 ? { prefix: `Statement ${i + 1} of ${total} failed:`, suffix: ` · statement ${i + 1} of ${total}` } : {});
+      if (!ok) return false;
+    }
+    if (total > 1) setStatus(`Ran ${total} statements`);
+    return true;
   }
 
   // Structured insert / update / delete (see lib/statements.js); the caller refreshes the results afterwards.
@@ -84,8 +114,28 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
     return runCall(() => window.workbench.mutate({ id: active.id, op }), tabId);
   }
 
+  // Stops the statement that is running on the active connection.
+  async function cancelQuery() {
+    if (!active) return;
+    setStatus('Cancelling…');
+    const res = await window.workbench.cancel({ id: active.id });
+    if (!res.ok) setStatus(`Could not cancel: ${res.error?.message || 'unknown error'}`);
+    else if (!res.cancelled) setStatus('This database cannot cancel a running query.');
+  }
+
+  // Changes the page / sort / filter of a browse tab and runs the new query.
+  function browseTo(patchState, tabId = tab.id) {
+    const target = tabs.find(t => t.id === tabId);
+    if (!target?.browse || !active || !target.selectedObject) return Promise.resolve(false);
+    const { generated, ...current } = target.browse;
+    const state = { ...current, ...patchState };
+    const query = buildBrowseQuery(active, target.selectedObject, state);
+    patchTab({ query, browse: { ...state, generated: query }, selected: [] }, tabId);
+    return runQuery(query, tabId);
+  }
+
   return {
     tab, connTabs, setActiveTabId, patchTab, setQuery, setError, setView, setSelected,
-    addTab, closeTab, removeConnectionTabs, resetConnectionTabs, runQuery, runMutation
+    addTab, closeTab, removeConnectionTabs, resetConnectionTabs, runQuery, runScript, runMutation, cancelQuery, browseTo
   };
 }

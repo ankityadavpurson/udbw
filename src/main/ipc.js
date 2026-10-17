@@ -23,6 +23,10 @@ const attempt = async work => {
   catch (err) { return { ok: false, error: safeError(err) }; }
 };
 
+const DEFAULT_MAX_ROWS = 1000;
+const MAX_ROWS = 100000;
+const rowLimit = value => (Number.isFinite(Number(value)) && Number(value) > 0 ? Math.min(Math.floor(Number(value)), MAX_ROWS) : DEFAULT_MAX_ROWS);
+
 function registerIpc() {
   ipcMain.on('app:ready', event => { if (fromMainWindow(event)) windowState.revealMainWindow(); });
   ipcMain.on('theme:report', (event, theme) => { if (fromMainWindow(event)) windowState.applyTheme(theme); });
@@ -67,13 +71,33 @@ function registerIpc() {
 
   handle('db:switch-database', ({ id, database }) => attempt(() => sessions.switchDatabase(id, database).then(() => ({}))));
 
-  handle('db:query', ({ id, query }) => attempt(async () => ({
-    result: await sessions.withSession(id, s => sessions.connectorFor(s.type).query(s, String(query)), { retry: isReadOnlyQuery(query) })
+  // Read-only connections are enforced here as well as by the UI (and by a read-only database session where supported).
+  const readOnlyError = () => new Error('This connection is read-only. Edit the connection to allow changes.');
+
+  handle('db:query', ({ id, query, maxRows }) => attempt(async () => ({
+    result: await sessions.withSession(id, s => {
+      const connector = sessions.connectorFor(s.type);
+      if (s.profile.readOnly && connector.isWrite(String(query))) throw readOnlyError();
+      return connector.query(s, String(query), { maxRows: rowLimit(maxRows) });
+    }, { retry: isReadOnlyQuery(query) })
+  })));
+
+  handle('db:cancel', ({ id }) => attempt(async () => ({ cancelled: await sessions.cancel(id) })));
+
+  // Columns, primary key and indexes of one table, loaded when it is opened.
+  handle('db:describe', ({ id, object }) => attempt(async () => ({
+    result: await sessions.withSession(id, s => {
+      const connector = sessions.connectorFor(s.type);
+      return connector.describe ? connector.describe(s, object || {}) : {};
+    }, { retry: true })
   })));
 
   // Structured insert / update / delete from the record editors; values are never assembled into query text.
   handle('db:mutate', ({ id, op }) => attempt(async () => ({
-    result: await sessions.withSession(id, s => sessions.connectorFor(s.type).mutate(s, op || {}))
+    result: await sessions.withSession(id, s => {
+      if (s.profile.readOnly) throw readOnlyError();
+      return sessions.connectorFor(s.type).mutate(s, op || {});
+    })
   })));
 }
 
