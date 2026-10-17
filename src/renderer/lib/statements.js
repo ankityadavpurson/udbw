@@ -63,3 +63,33 @@ export function buildRecordStatement({ active, object, action, record, selectedJ
   }
   return { statement: `DELETE FROM ${table} WHERE ${where};` };
 }
+
+// A typed `find <collection>` / `read <collection>` still tells us which collection is being edited.
+export function inferObject(active, query) {
+  if (active?.type !== 'mongodb' && active?.type !== 'firestore') return null;
+  const match = /^\s*(?:find|read)\s+([A-Za-z0-9_.-]+)/i.exec(query || '');
+  return match ? { name: match[1], type: 'collection' } : null;
+}
+
+// Update for one edited document. Only changed fields are sent, so untouched values (dates, ObjectIds) keep their type.
+// Returns { statement }, { noChange: true } or { error }.
+export function buildDocumentUpdate({ active, object, doc, edited }) {
+  const idKey = active.type === 'firestore' ? 'id' : '_id';
+  const docId = doc?.[idKey];
+  if (!docId) return { error: 'This document has no identifier.' };
+  if (edited[idKey] !== undefined && String(edited[idKey]) !== String(docId)) return { error: `${idKey} cannot be changed.` };
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const changed = {};
+  const removed = [];
+  for (const [key, value] of Object.entries(edited)) if (key !== idKey && (!(key in doc) || !same(value, doc[key]))) changed[key] = value;
+  for (const key of Object.keys(doc)) if (key !== idKey && !(key in edited)) removed.push(key);
+  if (!Object.keys(changed).length && !removed.length) return { noChange: true };
+  if (active.type === 'mongodb') {
+    const update = {};
+    if (Object.keys(changed).length) update.$set = changed;
+    if (removed.length) update.$unset = Object.fromEntries(removed.map(key => [key, '']));
+    return { statement: `update ${object.name} ${docId} ${JSON.stringify(update)}` };
+  }
+  if (removed.length) return { error: 'Removing fields is not supported for Firestore documents.' };
+  return { statement: `update ${object.name} ${docId} ${JSON.stringify(changed)}` };
+}

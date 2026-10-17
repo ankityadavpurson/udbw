@@ -4,7 +4,8 @@ import {
   HelperText, PlusIcon, RefreshIcon, Stack, ToggleButton, ToggleButtonGroup, Trash2Icon
 } from 'xedonium';
 import { engines } from '../../constants.js';
-import { toTable } from '../../lib/results.js';
+import { isDocumentResult, toTable } from '../../lib/results.js';
+import DocumentList from './DocumentList.jsx';
 
 export default function ResultsPanel({ tab, status, records, isConnected, busy, onViewChange, onSelectIndex, onRerun, onCopyRow, onExportJson, onExportCsv }) {
   const { result, error, view, meta, selectedObject, selectedIndex } = tab;
@@ -27,12 +28,13 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
         <Flex gap={2} wrap justify="center">{Object.values(engines).map(x => <Chip key={x.label}>{x.label}</Chip>)}</Flex>
       </Stack>
     );
+    if (view === 'json' && isDocumentResult(result)) return <DocumentList documents={result.json} canEdit={Boolean(records.selectedObject) && isConnected} onUpdate={records.updateDocument} onClone={records.cloneDocument} onDelete={records.deleteDocument} onInsert={() => records.openEditor('insert')} />;
     if (view === 'json') return <div className="p-2"><CodeDisplay language="json" code={JSON.stringify(result.json ?? { columns: result.columns, rows: result.rows, message: result.message }, null, 2)} maxHeight="70vh" lineNumbers copyable /></div>;
     if (!columns.length) return <Stack gap={1} className="px-6 py-10 text-center"><h2 className="text-base font-semibold">{result.message || 'Command completed'}</h2><HelperText>No tabular rows returned.</HelperText></Stack>;
     return (
       <Stack gap={2} className="p-2">
         <Flex gap={2} wrap align="center">
-          <Button variant="secondary" disabled={!selectedObject || selectedObject.type === 'view'} onClick={() => openEditor('insert')}><PlusIcon /> Insert</Button>
+          <Button variant="secondary" disabled={!records.selectedObject || records.selectedObject.type === 'view'} onClick={() => openEditor('insert')}><PlusIcon /> Insert</Button>
           <Button variant="secondary" disabled={!canEditSelected} onClick={() => openEditor('edit')}><EditIcon /> Edit</Button>
           <Button variant="danger" disabled={!canEditSelected} onClick={() => openEditor('delete')}><Trash2Icon /> Delete</Button>
           <Divider orientation="vertical" className="h-6" />
