@@ -27,3 +27,15 @@ export function toTable(result) {
   const columns = [...idKeys, ...keys.filter(key => !idKeys.includes(key))].slice(0, MAX_DOCUMENT_COLUMNS);
   return { columns, rows: result.json.map(doc => columns.map(column => cell(doc?.[column]))) };
 }
+
+const LABEL_KEYS = ['name', 'title', 'fullname', 'username', 'email', 'label', 'status', 'type'];
+
+// Short "key: value" pairs that help recognise a document at a glance (scalars only, id excluded).
+export function summarizeDocument(doc, max = 4) {
+  const entries = Object.entries(doc || {}).filter(([key, value]) => key !== '_id' && key !== 'id' && (value === null || typeof value !== 'object'));
+  entries.sort(([a], [b]) => {
+    const rank = key => { const i = LABEL_KEYS.indexOf(key.toLowerCase()); return i === -1 ? LABEL_KEYS.length : i; };
+    return rank(a) - rank(b);
+  });
+  return entries.slice(0, max).map(([key, value]) => [key, value === null ? 'null' : String(value).length > 28 ? `${String(value).slice(0, 27)}…` : String(value)]);
+}
