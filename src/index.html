@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Universal DB Workbench</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark">DB</div><div><strong>Universal DB Workbench</strong><small>One workspace · multiple data engines</small></div></div>
+      <div class="top-actions"><span id="globalStatus" class="status-pill">No active connection</span><button id="newConnectionBtn" class="primary">＋ New connection</button></div>
+    </header>
+    <main class="layout">
+      <aside class="sidebar">
+        <div class="side-heading"><span>CONNECTIONS</span><button id="sideAddBtn" class="icon-btn" title="New connection">＋</button></div>
+        <div id="connectionsList" class="connections-list"><div class="empty-side">Add a connection to get started.</div></div>
+        <div class="sidebar-footer"><span class="dot"></span> Credentials stay in memory for this session</div>
+      </aside>
+      <section class="workspace">
+        <div class="tabbar" id="tabbar"><div class="tab active">Query workspace</div><div class="tab-hint">Select a connection to begin</div></div>
+        <div class="toolbar">
+          <div class="selected-connection"><span class="connection-dot"></span><span id="activeConnectionName">No connection selected</span></div>
+          <div class="toolbar-actions"><button id="connectBtn">Connect</button><button id="disconnectBtn" disabled>Disconnect</button><button id="runBtn" class="primary" disabled>▶ Run</button></div>
+        </div>
+        <div class="editor-area">
+          <div class="editor-label"><span id="editorMode">QUERY EDITOR</span><span>Ctrl / ⌘ + Enter to run</span></div>
+          <textarea id="queryEditor" spellcheck="false" aria-label="Query editor">SELECT 1 AS connection_test;</textarea>
+          <div class="editor-help" id="editorHelp">SQL mode · Run a query against the selected SQL connection.</div>
+        </div>
+        <div class="result-area">
+          <div class="result-header"><div><strong>Results</strong><span id="resultMeta">No query executed</span></div><div class="result-actions"><button id="viewTableBtn" class="view-toggle active">Table</button><button id="viewJsonBtn" class="view-toggle">JSON</button><button id="exportBtn" disabled>Export JSON</button></div></div>
+          <div id="resultContent" class="result-content"><div class="welcome"><div class="welcome-icon">⌘</div><h2>Your databases, one workspace.</h2><p>Create a connection, test it, then run a query or browse data.</p><div class="feature-chips"><span>MySQL</span><span>PostgreSQL</span><span>MongoDB</span><span>Supabase</span><span>Firestore</span></div></div></div>
+        </div>
+        <footer class="statusbar"><span id="statusMessage">Ready</span><span>Local desktop app · v0.1.0</span></footer>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="connectionDialog" class="modal">
+    <form id="connectionForm" method="dialog">
+      <div class="modal-head"><div><h2>New connection</h2><p>Connection details are not saved to disk.</p></div><button type="button" id="closeDialogBtn" class="icon-btn">✕</button></div>
+      <label>Connection name<input id="connName" placeholder="Development database" required /></label>
+      <label>Database type<select id="connType">
+        <option value="mysql">MySQL</option>
+        <option value="postgres">PostgreSQL</option>
+        <option value="mongodb">MongoDB</option>
+        <option value="supabase">Supabase</option>
+        <option value="firestore">Firebase Firestore</option>
+      </select></label>
+      <div id="dynamicFields"></div>
+      <div class="modal-error" id="formError"></div>
+      <div class="modal-actions"><button type="button" id="cancelDialogBtn">Cancel</button><button type="submit" class="primary">Add connection</button></div>
+    </form>
+  </dialog>
+  <script src="./renderer.js"></script>
+</body>
+</html>

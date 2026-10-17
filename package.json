@@ -1,0 +1,32 @@
+{
+  "name": "universal-db-workbench",
+  "version": "0.1.0",
+  "description": "Cross-platform desktop database workbench for MySQL, PostgreSQL, MongoDB, Supabase and Firebase Firestore",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.0",
+    "firebase-admin": "^13.5.0",
+    "mongodb": "^6.19.0",
+    "mysql2": "^3.14.3",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "dev.universaldb.workbench",
+    "productName": "Universal DB Workbench",
+    "files": ["src/**/*", "package.json"],
+    "directories": { "output": "release" },
+    "win": { "target": "nsis" },
+    "mac": { "target": "dmg" },
+    "linux": { "target": "AppImage" }
+  }
+}
