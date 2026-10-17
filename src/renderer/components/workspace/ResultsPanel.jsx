@@ -4,16 +4,18 @@ import {
   HelperText, PlusIcon, RefreshIcon, Stack, ToggleButton, ToggleButtonGroup, Trash2Icon
 } from 'xedonium';
 import { engines } from '../../constants.js';
+import { toTable } from '../../lib/results.js';
 
 export default function ResultsPanel({ tab, status, records, isConnected, busy, onViewChange, onSelectIndex, onRerun, onCopyRow, onExportJson, onExportCsv }) {
   const { result, error, view, meta, selectedObject, selectedIndex } = tab;
   const { hasSelection, selectedJson, canEditSelected, openEditor, setViewerOpen } = records;
 
-  const columns = (result?.columns || []).map((column, j) => ({
+  const table = toTable(result);
+  const columns = table.columns.map((column, j) => ({
     key: `c${j}`, header: column, sortable: true, accessor: row => row[`c${j}`],
     render: row => <span className="block max-w-[22rem] truncate" title={String(row[`c${j}`] ?? '')}>{row[`c${j}`] ?? ''}</span>
   }));
-  const rows = (result?.rows || []).map((row, index) => Object.fromEntries([['__i', index], ...row.map((value, j) => [`c${j}`, value])]));
+  const rows = table.rows.map((row, index) => Object.fromEntries([['__i', index], ...row.map((value, j) => [`c${j}`, value])]));
 
   const body = () => {
     if (error) return <div className="p-4"><Alert tone="danger" title="Query failed"><span className="whitespace-pre-wrap">{error}</span></Alert></div>;
@@ -25,7 +27,7 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
         <Flex gap={2} wrap justify="center">{Object.values(engines).map(x => <Chip key={x.label}>{x.label}</Chip>)}</Flex>
       </Stack>
     );
-    if (view === 'json') return <div className="p-2"><CodeDisplay language="json" code={JSON.stringify(result.json ?? { columns: result.columns, rows: result.rows, message: result.message }, null, 2)} maxHeight="70vh" copyable /></div>;
+    if (view === 'json') return <div className="p-2"><CodeDisplay language="json" code={JSON.stringify(result.json ?? { columns: result.columns, rows: result.rows, message: result.message }, null, 2)} maxHeight="70vh" lineNumbers copyable /></div>;
     if (!columns.length) return <Stack gap={1} className="px-6 py-10 text-center"><h2 className="text-base font-semibold">{result.message || 'Command completed'}</h2><HelperText>No tabular rows returned.</HelperText></Stack>;
     return (
       <Stack gap={2} className="p-2">

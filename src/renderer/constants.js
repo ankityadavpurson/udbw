@@ -14,7 +14,7 @@ export const blankProfile = {
 
 export const blankTab = {
   id: 'blank', connId: null, title: '', query: '', result: null, error: '', meta: 'No query executed',
-  view: 'table', selectedIndex: null, selectedObject: null
+  view: 'table', viewPinned: false, selectedIndex: null, selectedObject: null
 };
 
 export const NAV_STORAGE_KEY = 'udw-nav-collapsed';

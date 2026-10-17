@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { engines, blankTab } from '../constants.js';
+import { autoView } from '../lib/results.js';
 
 const CONNECTION_LOST = /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|57P01|08006|08001|connection terminated|not connected|server closed the connection/i;
 
@@ -9,7 +10,7 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
   const makeTab = (connId, queryText, extra = {}) => ({
     id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, connId,
     title: extra.title ?? `Query ${(tabCounter.current[connId] = (tabCounter.current[connId] || 0) + 1)}`,
-    query: queryText, result: null, error: '', meta: 'No query executed', view: 'table', selectedIndex: null, selectedObject: null, ...extra
+    query: queryText, result: null, error: '', meta: 'No query executed', view: 'table', viewPinned: false, selectedIndex: null, selectedObject: null, ...extra
   });
   const [initialTab] = useState(() => makeTab(null, engines.mysql.query));
   const [tabs, setTabs] = useState([initialTab]);
@@ -20,7 +21,8 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
   const patchTab = (patch, id = tab.id) => setTabs(all => all.map(t => t.id === id ? { ...t, ...patch } : t));
   const setQuery = value => patchTab({ query: value });
   const setError = value => patchTab({ error: value });
-  const setView = value => patchTab({ view: value });
+  // A manual choice sticks to the tab; until then the view follows the shape of each result.
+  const setView = value => patchTab({ view: value, viewPinned: true });
   const setSelectedIndex = value => patchTab({ selectedIndex: value });
 
   // Every connection always has at least one tab.
@@ -63,7 +65,8 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
       return false;
     }
     const data = { ...res.result, elapsedMs: Math.round(performance.now() - started) };
-    patch({ result: data, meta: `${data.message || 'Completed'} · ${data.elapsedMs} ms`, selectedIndex: null }); setStatus('Query completed');
+    setTabs(all => all.map(t => t.id === tabId ? { ...t, result: data, meta: `${data.message || 'Completed'} · ${data.elapsedMs} ms`, selectedIndex: null, view: t.viewPinned ? t.view : autoView(data) } : t));
+    setStatus('Query completed');
     return true;
   }
 
