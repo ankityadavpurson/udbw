@@ -1,7 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ThemeProvider, Button, Card, Badge, Alert } from 'xedonium';
-import ThemeToggle from 'xedonium/ThemeToggle';
+import {
+  ThemeProvider, AppShell, AppBar, Sidebar, Card, Button, Chip, Alert, Modal, ConfirmDialog, Field, PasswordInput,
+  Select, Checkbox, TextArea, Input, DataGrid, CodeDisplay, Tree, ActionMenu, ToggleButton, ToggleButtonGroup,
+  HelperText, Loader, Flex, Stack, Divider,
+  DatabaseIcon, PlayIcon, PlusIcon, SearchIcon, RefreshIcon, StarIcon, CopyIcon, Trash2Icon, DownloadIcon, EditIcon,
+  MoreVerticalIcon, TableIcon, PowerIcon, EyeIcon, FolderIcon
+} from 'xedonium';
 import commandMark from './command-mark.svg';
 import 'xedonium/styles.css';
 import './styles.css';
@@ -31,11 +36,8 @@ function App() {
   const [currentDatabase, setCurrentDatabase] = useState('');
   const [currentSchema, setCurrentSchema] = useState('');
   const [objectSearch, setObjectSearch] = useState('');
-  const [resultFilter, setResultFilter] = useState('');
-  const [sortColumn, setSortColumn] = useState(null);
-  const [sortDirection, setSortDirection] = useState(1);
-  const [page, setPage] = useState(0);
-  const [selectedCell, setSelectedCell] = useState(null);
+  const [selectedIndex, setSelectedIndex] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [recordOpen, setRecordOpen] = useState(false);
   const [recordEditorOpen, setRecordEditorOpen] = useState(false);
   const [recordAction, setRecordAction] = useState('insert');
@@ -51,9 +53,6 @@ function App() {
   const [meta, setMeta] = useState('No query executed');
   const [status, setStatus] = useState('Ready');
   const [busy, setBusy] = useState(false);
-  const formDialog = useRef(null);
-  const recordDialog = useRef(null);
-  const recordEditorDialog = useRef(null);
   const pendingSaveRef = useRef(false);
   const active = profiles.find(p => p.id === activeId);
   const isConnected = active && connected.includes(active.id);
@@ -101,27 +100,6 @@ function App() {
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
-
-  useEffect(() => {
-    const node = formDialog.current;
-    if (!node) return;
-    if (dialogOpen && !node.open) node.showModal();
-    if (!dialogOpen && node.open) node.close();
-  }, [dialogOpen]);
-
-  useEffect(() => {
-    const node = recordDialog.current;
-    if (!node) return;
-    if (recordOpen && !node.open) node.showModal();
-    if (!recordOpen && node.open) node.close();
-  }, [recordOpen]);
-
-  useEffect(() => {
-    const node = recordEditorDialog.current;
-    if (!node) return;
-    if (recordEditorOpen && !node.open) node.showModal();
-    if (!recordEditorOpen && node.open) node.close();
-  }, [recordEditorOpen]);
 
   useEffect(() => {
     const onShortcut = event => {
@@ -218,7 +196,7 @@ function App() {
     setCurrentSchema(''); await loadObjectTree(active.id, database, '');
   }
   async function openObject(object) {
-    setSelectedObject(object); setSelectedCell(null);
+    setSelectedObject(object); setSelectedIndex(null);
     let statement;
     if (active?.type === 'mongodb') statement = `find ${object.name} LIMIT 100`;
     else if (active?.type === 'firestore') statement = `read ${object.name} LIMIT 100`;
@@ -241,7 +219,6 @@ function App() {
   }
   async function applyRecordChange(e) {
     e.preventDefault();
-    if (recordAction === 'delete' && !window.confirm('Delete this record/document? This cannot be undone.')) return;
     let record;
     try { record = JSON.parse(recordJsonText); if (!record || Array.isArray(record) || typeof record !== 'object') throw new Error(); }
     catch { setFormError('Enter a valid JSON object.'); return; }
@@ -318,7 +295,7 @@ function App() {
     setProfiles(all => [...all, copy]); setLastQueries(all => ({ ...all, [copy.id]: lastQueries[p.id] || engines[p.type].query })); setStorageReady(true); setStatus(`Duplicated ${p.name}.`);
   }
   async function deleteConnection(p) {
-    if (!window.confirm(`Delete connection “${p.name}”? This cannot be undone.`)) return;
+    setDeleteTarget(null);
     if (connected.includes(p.id)) await window.workbench.disconnect({ id: p.id });
     setConnected(all => all.filter(id => id !== p.id));
     setConnectionStates(states => { const next = { ...states }; delete next[p.id]; return next; });
@@ -363,7 +340,7 @@ function App() {
     }
     const data = { ...res.result, elapsedMs: Math.round(performance.now() - started) };
     setResult(data); setMeta(`${data.message || 'Completed'} · ${data.elapsedMs} ms`); setStatus('Query completed');
-    setResultFilter(''); setSortColumn(null); setPage(0); setSelectedCell(null);
+    setSelectedIndex(null);
     return true;
   }
   function exportResult() {
@@ -388,81 +365,238 @@ function App() {
     try { await navigator.clipboard.writeText(typeof value === 'string' ? value : JSON.stringify(value, null, 2)); setStatus('Copied to clipboard'); }
     catch { setStatus('Clipboard access is unavailable'); }
   }
-  const allRows = (result?.rows || []).map((row, index) => ({ row, index }));
-  const filteredRows = allRows.filter(({ row }) => !resultFilter.trim() || row.some(value => String(value ?? '').toLowerCase().includes(resultFilter.trim().toLowerCase())));
-  if (sortColumn !== null) filteredRows.sort((a, b) => String(a.row[sortColumn] ?? '').localeCompare(String(b.row[sortColumn] ?? ''), undefined, { numeric: true, sensitivity: 'base' }) * sortDirection);
-  const pageSize = 50;
-  const pageRows = filteredRows.slice(page * pageSize, (page + 1) * pageSize);
-  const selectedRow = selectedCell ? result?.rows?.[selectedCell.row] : null;
-  const selectedJson = selectedCell ? (result?.json?.[selectedCell.row] ?? selectedRow) : null;
-  const canEditSelected = Boolean(selectedCell && ((active?.type === 'mongodb' || active?.type === 'firestore' || (active?.type === 'supabase' && !active.connectionString)) || (selectedObject?.primaryKey?.length && selectedObject.primaryKey.every(key => selectedJson?.[key] !== undefined))));
-  function field(label, key, placeholder, type = 'text', required = false) {
-    const secret = ['password','apiKey','connectionString','uri','sshPassword','sshPassphrase'].includes(key);
-    const actualType = secret ? (passwordVisible ? 'text' : 'password') : type;
-    const inputType = ['port','sshPort'].includes(key) ? 'number' : actualType;
-    return <label className="form-field" key={key}>{label}<span className="input-with-action"><input type={inputType} min={inputType === 'number' ? 1 : undefined} max={inputType === 'number' ? 65535 : undefined} required={required} placeholder={placeholder} value={profile[key] || ''} onChange={e => { setTestState('idle'); setProfile(p => ({ ...p, [key]: e.target.value })); }} />{secret && <button type="button" className="text-action" onClick={() => setPasswordVisible(v => !v)}>{passwordVisible ? 'Hide' : 'Show'}</button>}</span></label>;
+  const hasSelection = selectedIndex !== null;
+  const selectedRow = hasSelection ? result?.rows?.[selectedIndex] : null;
+  const selectedJson = hasSelection ? (result?.json?.[selectedIndex] ?? selectedRow) : null;
+  const canEditSelected = Boolean(hasSelection && ((active?.type === 'mongodb' || active?.type === 'firestore' || (active?.type === 'supabase' && !active.connectionString)) || (selectedObject?.primaryKey?.length && selectedObject.primaryKey.every(key => selectedJson?.[key] !== undefined))));  const upd = key => value => { setTestState('idle'); setProfile(p => ({ ...p, [key]: value })); };
+  function textField(label, key, placeholder, { required = false, type = 'text', helperText } = {}) {
+    return <Field key={key} label={label} type={type} value={profile[key] || ''} onChange={upd(key)} placeholder={placeholder} required={required} helperText={helperText} />;
+  }
+  function secretField(label, key, placeholder) {
+    return <PasswordInput key={key} label={label} value={profile[key] || ''} onChange={upd(key)} placeholder={placeholder} autoComplete="off" />;
+  }
+  function pathField(label, key, placeholder, onPick, buttonLabel) {
+    return <Flex align="end" gap={2}><div className="min-w-0 flex-1"><Field label={label} value={profile[key] || ''} onChange={() => {}} placeholder={placeholder} readOnly required /></div><Button type="button" onClick={onPick}>{buttonLabel}</Button></Flex>;
+  }
+  function sslFields(label = 'Use TLS/SSL') {
+    return <Stack gap={2}>
+      <Checkbox label={label} checked={profile.ssl} onChange={upd('ssl')} />
+      {profile.ssl && <Checkbox label="Allow untrusted / self-signed certificate" description="Disables certificate verification. Use only for hosts you trust." checked={profile.sslAllowUntrusted} onChange={upd('sslAllowUntrusted')} />}
+    </Stack>;
   }
   function sshFields() {
     if (profile.type === 'firestore' || (profile.type === 'supabase' && !profile.connectionString)) return null;
-    return <div className="ssh-fields"><label className="check-row"><input type="checkbox" checked={profile.sshEnabled} onChange={e => { setTestState('idle'); setProfile(p => ({ ...p, sshEnabled: e.target.checked })); }} /> Connect through an SSH tunnel</label>{profile.sshEnabled && <><div className="field-grid">{field('SSH host','sshHost','bastion.example.com','text',true)}{field('SSH port','sshPort','22','text',true)}</div><div className="field-grid">{field('SSH username','sshUsername','ssh_user','text',true)}<label className="form-field">SSH authentication<select value={profile.sshAuthMethod} onChange={e => { setTestState('idle'); setProfile(p => ({ ...p, sshAuthMethod: e.target.value })); }}><option value="password">Password</option><option value="privateKey">Private key</option></select></label></div>{profile.sshAuthMethod === 'password' ? field('SSH password','sshPassword','Password','password',true) : <><label className="form-field">SSH private key<div className="file-picker"><input readOnly required value={profile.sshKeyPath} placeholder="Choose a private key" /><Button type="button" onClick={chooseSshKey}>Choose key</Button></div></label>{field('Key passphrase (optional)','sshPassphrase','Passphrase','password')}</>}{field('Remote database host (optional)','sshRemoteHost','Defaults to the database host')}</>}</div>;
+    return <Stack gap={3}>
+      <Divider />
+      <Checkbox label="Connect through an SSH tunnel" checked={profile.sshEnabled} onChange={upd('sshEnabled')} />
+      {profile.sshEnabled && <>
+        <div className="grid grid-cols-2 gap-3">{textField('SSH host', 'sshHost', 'bastion.example.com', { required: true })}{textField('SSH port', 'sshPort', '22', { required: true, type: 'number' })}</div>
+        <div className="grid grid-cols-2 gap-3">
+          {textField('SSH username', 'sshUsername', 'ssh_user', { required: true })}
+          <Select label="SSH authentication" value={profile.sshAuthMethod} onChange={upd('sshAuthMethod')} options={[{ value: 'password', label: 'Password' }, { value: 'privateKey', label: 'Private key' }]} />
+        </div>
+        {profile.sshAuthMethod === 'password'
+          ? secretField('SSH password', 'sshPassword', 'Password')
+          : <>{pathField('SSH private key', 'sshKeyPath', 'Choose a private key', chooseSshKey, 'Choose key')}{secretField('Key passphrase (optional)', 'sshPassphrase', 'Passphrase')}</>}
+        {textField('Remote database host (optional)', 'sshRemoteHost', 'Defaults to the database host')}
+      </>}
+    </Stack>;
   }
   function dynamicFields() {
     if (profile.type === 'mysql' || profile.type === 'postgres') return <>
-      {field('Connection string (optional)','connectionString',profile.type === 'mysql' ? 'mysql://user:password@host:3306/database' : 'postgresql://user:password@host:5432/database')}
-      {!profile.connectionString && <><div className="field-grid">{field('Host','host','db.example.com','text',true)}{field('Port','port',profile.type === 'mysql' ? '3306' : '5432','text',true)}</div>
-      <div className="field-grid">{field('Database','database','database_name','text',true)}{field('Username','username','db_user','text',true)}</div>
-      {field('Password','password','Password','password')}
+      {secretField('Connection string (optional)', 'connectionString', profile.type === 'mysql' ? 'mysql://user:password@host:3306/database' : 'postgresql://user:password@host:5432/database')}
+      {!profile.connectionString && <>
+        <div className="grid grid-cols-[1fr_8rem] gap-3">{textField('Host', 'host', 'db.example.com', { required: true })}{textField('Port', 'port', profile.type === 'mysql' ? '3306' : '5432', { required: true, type: 'number' })}</div>
+        <div className="grid grid-cols-2 gap-3">{textField('Database', 'database', 'database_name', { required: true })}{textField('Username', 'username', 'db_user', { required: true })}</div>
+        {secretField('Password', 'password', 'Password')}
       </>}
-      <label className="check-row"><input type="checkbox" checked={profile.ssl} onChange={e => { setTestState('idle'); setProfile(p => ({ ...p, ssl: e.target.checked })); }} /> Use TLS/SSL</label>{profile.ssl && <label className="check-row"><input type="checkbox" checked={profile.sslAllowUntrusted} onChange={e => { setTestState('idle'); setProfile(p => ({ ...p, sslAllowUntrusted: e.target.checked })); }} /> Allow untrusted/self-signed certificate (disables verification)</label>}{sshFields()}
+      {sslFields()}{sshFields()}
     </>;
-    if (profile.type === 'mongodb') return <>{field('MongoDB URI','uri','mongodb+srv://user:password@cluster.example.mongodb.net/','text',true)}{field('Database (optional)','database','database_name')}<p className="field-note">Authentication is configured in the URI.</p>{sshFields()}</>;
-    if (profile.type === 'supabase') return <>{field('PostgreSQL connection string','connectionString','postgresql://user:password@host:5432/postgres')}<p className="field-note">Find it in Project Settings → Database → Connection string.</p><div className="field-grid">{field('Project URL (optional REST)','restUrl','https://your-project.supabase.co')}{field('API key (optional REST)','apiKey','Publishable / anon key')}</div><p className="field-note">Without a connection string, both REST fields are required. REST mode supports API-authorized operations.</p><label className="check-row"><input type="checkbox" checked={profile.ssl} onChange={e => { setTestState('idle'); setProfile(p => ({ ...p, ssl: e.target.checked })); }} /> Use TLS/SSL for PostgreSQL</label>{profile.ssl && <label className="check-row"><input type="checkbox" checked={profile.sslAllowUntrusted} onChange={e => { setTestState('idle'); setProfile(p => ({ ...p, sslAllowUntrusted: e.target.checked })); }} /> Allow untrusted/self-signed certificate (disables verification)</label>}{sshFields()}</>;
-    return <><label className="form-field">Service-account JSON file<div className="file-picker"><input readOnly required value={profile.serviceAccountPath} placeholder="Choose a JSON key file" /><Button type="button" onClick={async () => { setTestState('idle'); await chooseFile(); }}>Choose file</Button></div></label>{field('Firebase project ID (optional)','projectId','my-firebase-project')}<Alert tone="warning">Firestore Admin SDK credentials bypass Firestore Security Rules. Use a dedicated, least-privilege service account.</Alert></>;
+    if (profile.type === 'mongodb') return <>
+      {secretField('MongoDB URI', 'uri', 'mongodb+srv://user:password@cluster.example.mongodb.net/')}
+      {textField('Database (optional)', 'database', 'database_name', { helperText: 'Authentication is configured in the URI.' })}
+      {sshFields()}
+    </>;
+    if (profile.type === 'supabase') return <>
+      {secretField('PostgreSQL connection string', 'connectionString', 'postgresql://user:password@host:5432/postgres')}
+      <HelperText>Find it in Project Settings → Database → Connection string.</HelperText>
+      <div className="grid grid-cols-2 gap-3">{textField('Project URL (optional REST)', 'restUrl', 'https://your-project.supabase.co')}{secretField('API key (optional REST)', 'apiKey', 'Publishable / anon key')}</div>
+      <HelperText>Without a connection string, both REST fields are required.</HelperText>
+      {sslFields('Use TLS/SSL for PostgreSQL')}{sshFields()}
+    </>;
+    return <>
+      {pathField('Service-account JSON file', 'serviceAccountPath', 'Choose a JSON key file', async () => { setTestState('idle'); await chooseFile(); }, 'Choose file')}
+      {textField('Firebase project ID (optional)', 'projectId', 'my-firebase-project')}
+      <Alert tone="warning">Firestore Admin SDK credentials bypass Firestore Security Rules. Use a dedicated, least-privilege service account.</Alert>
+    </>;
   }
-  function resultPanel() {
-    if (error) return <Alert tone="danger" className="result-error">{error}</Alert>;
-    if (!result) return <div className="welcome"><div className="welcome-icon">⌘</div><h2>Your databases, one workspace.</h2><p>Create a connection, test it, then run a query or browse data.</p><div className="feature-chips">{Object.values(engines).map(x => <Badge key={x.label}>{x.label}</Badge>)}</div></div>;
-    if (view === 'json') return <pre className="json-view">{JSON.stringify(result.json ?? { columns: result.columns, rows: result.rows, message: result.message }, null, 2)}</pre>;
-    const cols = result.columns || [], rows = result.rows || [];
-    if (!cols.length) return <div className="welcome"><h2>{result.message || 'Command completed'}</h2><p>No tabular rows returned.</p></div>;
-    return <div className="table-scroll"><div className="table-tools"><input className="result-filter" value={resultFilter} onChange={e => { setResultFilter(e.target.value); setPage(0); }} placeholder="Filter results…" aria-label="Filter results" /><span>{filteredRows.length} row{filteredRows.length === 1 ? '' : 's'}</span><Button disabled={!isConnected || busy} onClick={() => runQuery()} tooltip="Refresh results">↻</Button><Button disabled={!selectedCell} onClick={() => copyText(selectedCell ? selectedRow?.[selectedCell.col] : null)}>Copy cell</Button><Button disabled={!selectedCell} onClick={() => copyText(selectedJson)}>Copy row / document</Button><Button disabled={!selectedCell} onClick={() => setRecordOpen(true)}>View record</Button><Button disabled={!selectedObject || selectedObject.type === 'view'} onClick={() => openRecordEditor('insert')}>Insert</Button><Button disabled={!canEditSelected} onClick={() => openRecordEditor('edit')}>Edit</Button><Button disabled={!canEditSelected} onClick={() => openRecordEditor('delete')}>Delete</Button></div>{pageRows.length ? <table className="result-table"><thead><tr>{cols.map((column,index) => <th key={column} onClick={() => { setSortDirection(sortColumn === index ? -sortDirection : 1); setSortColumn(index); setPage(0); }}>{column}{sortColumn === index ? (sortDirection > 0 ? ' ↑' : ' ↓') : ''}</th>)}</tr></thead><tbody>{pageRows.map(({row,index}) => <tr key={index}>{cols.map((_,j) => <td key={j} title={row[j] ?? ''} className={selectedCell?.row === index && selectedCell?.col === j ? 'selected-cell' : ''} onClick={() => setSelectedCell({ row:index, col:j })} onDoubleClick={() => { setSelectedCell({ row:index, col:j }); setRecordOpen(true); }}>{row[j] ?? ''}</td>)}</tr>)}</tbody></table> : <div className="object-empty">{resultFilter ? 'No rows match this filter.' : 'No rows returned.'}</div>}<div className="pagination"><span>Page {page + 1} of {Math.max(1, Math.ceil(filteredRows.length / pageSize))}</span><div><Button disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>Previous</Button><Button disabled={(page + 1) * pageSize >= filteredRows.length} onClick={() => setPage(p => p + 1)}>Next</Button></div></div></div>;
+
+  const gridColumns = (result?.columns || []).map((column, j) => ({
+    key: `c${j}`, header: column, sortable: true, accessor: row => row[`c${j}`],
+    render: row => <span className="block max-w-[22rem] truncate" title={String(row[`c${j}`] ?? '')}>{row[`c${j}`] ?? ''}</span>
+  }));
+  const gridRows = (result?.rows || []).map((row, index) => Object.fromEntries([['__i', index], ...row.map((value, j) => [`c${j}`, value])]));
+
+  function resultBody() {
+    if (error) return <div className="p-4"><Alert tone="danger" title="Query failed"><span className="whitespace-pre-wrap">{error}</span></Alert></div>;
+    if (!result) return <Stack gap={3} className="items-center px-6 py-14 text-center">
+      <DatabaseIcon className="h-9 w-9 text-app-muted" />
+      <h2 className="text-lg font-semibold">Your databases, one workspace</h2>
+      <HelperText>Create a connection, connect, then browse an object or run a query.</HelperText>
+      <Flex gap={2} wrap justify="center">{Object.values(engines).map(x => <Chip key={x.label}>{x.label}</Chip>)}</Flex>
+    </Stack>;
+    if (view === 'json') return <div className="p-2"><CodeDisplay language="json" code={JSON.stringify(result.json ?? { columns: result.columns, rows: result.rows, message: result.message }, null, 2)} maxHeight="70vh" copyable /></div>;
+    if (!gridColumns.length) return <Stack gap={1} className="px-6 py-10 text-center"><h2 className="text-base font-semibold">{result.message || 'Command completed'}</h2><HelperText>No tabular rows returned.</HelperText></Stack>;
+    return <Stack gap={2} className="p-2">
+      <Flex gap={2} wrap align="center">
+        <Button variant="secondary" disabled={!selectedObject || selectedObject.type === 'view'} onClick={() => openRecordEditor('insert')}><PlusIcon /> Insert</Button>
+        <Button variant="secondary" disabled={!canEditSelected} onClick={() => openRecordEditor('edit')}><EditIcon /> Edit</Button>
+        <Button variant="danger" disabled={!canEditSelected} onClick={() => openRecordEditor('delete')}><Trash2Icon /> Delete</Button>
+        <Divider orientation="vertical" className="h-6" />
+        <Button variant="secondary" disabled={!hasSelection} onClick={() => setRecordOpen(true)}><EyeIcon /> View record</Button>
+        <Button variant="secondary" disabled={!hasSelection} onClick={() => copyText(selectedJson)}><CopyIcon /> Copy row</Button>
+        <Button variant="flat" disabled={!isConnected || busy} tooltip="Re-run query" onClick={() => runQuery()}><RefreshIcon /></Button>
+      </Flex>
+      <DataGrid columns={gridColumns} rows={gridRows} rowKey="__i" searchable selectable pageSize={50} pageSizeOptions={[25, 50, 100]}
+        selected={hasSelection ? [selectedIndex] : []}
+        onSelectionChange={keys => { const fresh = keys.filter(k => k !== selectedIndex); setSelectedIndex(fresh.length ? fresh[fresh.length - 1] : keys.length ? keys[keys.length - 1] : null); }}
+        empty="No rows returned." caption="Query results" />
+    </Stack>;
   }
 
   function renderObjectBrowser() {
-    if (!active || !isConnected) return <div className="object-empty">Connect to browse databases and objects.</div>;
+    if (!active || !isConnected) return <HelperText className="p-4">Connect to browse databases and objects.</HelperText>;
     const objects = (objectTree?.objects || []).filter(item => item.name.toLowerCase().includes(objectSearch.trim().toLowerCase()));
     const objectTypes = [...new Set(objects.map(item => item.type || 'object'))];
-    return <section className="object-browser">
-      <div className="object-browser-head"><strong>DATABASE OBJECTS</strong><button type="button" title="Refresh objects" disabled={treeLoading} onClick={() => loadObjectTree()}>{treeLoading ? '…' : '↻'}</button></div>
-      {!!objectTree?.databases?.length && <label className="tree-select">Database<select value={currentDatabase || objectTree.databases[0]} onChange={e => changeDatabase(e.target.value)} disabled={treeLoading}><option value="">Choose database</option>{objectTree.databases.map(db => <option key={db} value={db}>{db}</option>)}</select></label>}
-      {!!objectTree?.schemas?.length && <label className="tree-select">Schema<select value={currentSchema} onChange={e => { setCurrentSchema(e.target.value); loadObjectTree(active.id, currentDatabase, e.target.value); }} disabled={treeLoading}><option value="">All schemas</option>{objectTree.schemas.map(schema => <option key={schema} value={schema}>{schema}</option>)}</select></label>}
-      {!!objectTree?.objects?.length && <input className="object-search" value={objectSearch} onChange={e => setObjectSearch(e.target.value)} placeholder="Search objects…" aria-label="Search database objects" />}
-      {treeLoading && <div className="object-empty">Loading database objects…</div>}
-      {!treeLoading && objectTree?.message && <div className="object-empty">{objectTree.message}</div>}
-      {!treeLoading && !objectTree?.message && !objects.length && <div className="object-empty">{objectSearch ? 'No objects match this search.' : 'No databases or objects available.'}</div>}
-      {!treeLoading && objectTypes.map(type => <details className="object-type-group" key={type} open><summary>{type === 'table' ? 'Tables' : type === 'view' ? 'Views' : type === 'collection' ? 'Collections' : type} <span>{objects.filter(item => (item.type || 'object') === type).length}</span></summary>{objects.filter(item => (item.type || 'object') === type).map(item => <button className="object-item" type="button" key={`${item.schema || ''}.${item.name}`} onClick={() => openObject(item)}><span>{type === 'view' ? '◫' : type === 'collection' ? '▧' : '▤'}</span><span>{item.name}</span><small>{item.columns?.length ? `${item.columns.length} columns` : item.metadata || type}</small></button>)}</details>)}
-    </section>;
+    const typeLabel = type => ({ table: 'Tables', view: 'Views', collection: 'Collections' }[type] || type);
+    const lookup = new Map();
+    const nodes = objectTypes.map(type => {
+      const items = objects.filter(item => (item.type || 'object') === type);
+      return {
+        key: `group:${type}`, label: <span className="font-semibold">{typeLabel(type)} <span className="text-app-muted">({items.length})</span></span>,
+        children: items.map(item => {
+          const key = `obj:${item.schema || ''}.${item.name}`; lookup.set(key, item);
+          return { key, label: <span className="flex min-w-0 items-center gap-2"><span className="shrink-0 [&>svg]:h-3.5 [&>svg]:w-3.5">{type === 'collection' ? <FolderIcon /> : <TableIcon />}</span><span className="truncate">{item.name}</span>{item.columns?.length ? <span className="ml-auto shrink-0 text-[10px] text-app-muted">{item.columns.length} cols</span> : null}</span> };
+        })
+      };
+    });
+    const selectedKey = selectedObject ? `obj:${selectedObject.schema || ''}.${selectedObject.name}` : undefined;
+    return <Stack gap={2} className="p-2">
+      <Flex justify="between" align="center">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-app-muted">Database objects</span>
+        <Button variant="flat" tooltip="Refresh objects" aria-label="Refresh objects" disabled={treeLoading} onClick={() => loadObjectTree()}><RefreshIcon /></Button>
+      </Flex>
+      {!!objectTree?.databases?.length && <Select label="Database" disabled={treeLoading} value={currentDatabase || objectTree.databases[0]} onChange={changeDatabase} options={objectTree.databases.map(db => ({ value: db, label: db }))} />}
+      {!!objectTree?.schemas?.length && <Select label="Schema" disabled={treeLoading} value={currentSchema} placeholder="All schemas" onChange={value => { setCurrentSchema(value); loadObjectTree(active.id, currentDatabase, value); }} options={[{ value: '', label: 'All schemas' }, ...objectTree.schemas.map(schema => ({ value: schema, label: schema }))]} />}
+      {!!objectTree?.objects?.length && <Input value={objectSearch} onChange={setObjectSearch} placeholder="Search objects…" aria-label="Search database objects" startAdornment={<SearchIcon className="h-4 w-4" />} />}
+      {treeLoading && <Loader variant="inline" size="sm" label="Loading objects…" />}
+      {!treeLoading && objectTree?.message && <HelperText>{objectTree.message}</HelperText>}
+      {!treeLoading && !objectTree?.message && !objects.length && <HelperText>{objectSearch ? 'No objects match this search.' : 'No databases or objects available.'}</HelperText>}
+      {!treeLoading && !!nodes.length && <Tree key={`${currentDatabase}|${currentSchema}|${objectTree?.objects?.length}|${objectSearch}`} label="Database objects" nodes={nodes} defaultExpanded={nodes.map(n => n.key)} selected={selectedKey} onSelect={key => { const item = lookup.get(key); if (item) openObject(item); }} />}
+    </Stack>;
   }
 
   const orderedProfiles = [...profiles].sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || (b.lastUsedAt || 0) - (a.lastUsedAt || 0) || a.name.localeCompare(b.name));
   const connectionStatus = id => connectionStates[id] || (connected.includes(id) ? 'connected' : 'disconnected');
   const profileGroups = [...new Set(orderedProfiles.map(p => p.group?.trim() || 'Connections'))];
+  const statusBadge = { connected: 'LIVE', connecting: '…', failed: 'ERR' };
+  const showSections = profileGroups.length > 1 || profileGroups[0] !== 'Connections';
+  const connectionItems = profileGroups.flatMap(group => [
+    ...(showSections ? [{ key: `section:${group}`, label: group, section: true }] : []),
+    ...orderedProfiles.filter(p => (p.group?.trim() || 'Connections') === group).map(p => ({
+      key: p.id, label: `${p.favorite ? '★ ' : ''}${p.name}`,
+      icon: <span className="text-[10px] font-bold">{engines[p.type].icon}</span>,
+      badge: statusBadge[connectionStatus(p.id)], onClick: () => chooseConnection(p)
+    }))
+  ]);
+  const statusTone = isConnected ? 'success' : connectionStates[activeId] === 'failed' ? 'danger' : 'default';
+  const statusLabel = isConnected ? 'Connected' : active ? (connectionStates[activeId] === 'connecting' ? 'Connecting…' : connectionStates[activeId] === 'failed' ? 'Connection failed' : 'Not connected') : 'No active connection';
 
-  return <ThemeProvider storageKey="universal-db-theme"><div className="app-shell">
-    <header className="topbar"><div className="brand"><img className="brand-mark" src={commandMark} alt="Command key logo" /><div><strong>Universal DB Workbench</strong><small>One workspace · multiple data engines</small></div></div><div className="top-actions"><Badge color={isConnected ? 'success' : 'secondary'}>{isConnected ? 'Connected' : active ? 'Profile selected' : 'No active connection'}</Badge><ThemeToggle variant="toolbar" /><Button onClick={() => openDialog()}>＋ New connection</Button></div></header>
-    <main className="layout"><aside className="sidebar"><div className="side-heading"><span>CONNECTIONS</span><div className="side-heading-actions"><Button className="icon-button" onClick={refreshConnections} tooltip="Refresh connections">↻</Button><Button className="icon-button" onClick={() => openDialog()} tooltip="New connection">＋</Button></div></div><div className="connections-list">{orderedProfiles.length ? profileGroups.map(group => <section className="connection-group" key={group}><h3>{group}</h3>{orderedProfiles.filter(p => (p.group?.trim() || 'Connections') === group).map(p => <div className="connection-row" key={p.id}><button className={`connection-item ${p.id === activeId ? 'selected' : ''}`} onClick={() => chooseConnection(p)}><span className="db-icon">{engines[p.type].icon}</span><span className="connection-text"><strong>{p.name}</strong><small>{engines[p.type].label} · {connectionStatus(p.id)}{p.lastUsedAt ? ' · recent' : ''}</small></span><span className={`state-dot ${connectionStatus(p.id)}`} /></button><div className="connection-tools"><button type="button" title={p.favorite ? 'Remove favorite' : 'Add favorite'} aria-label={p.favorite ? 'Remove favorite' : 'Add favorite'} onClick={() => toggleFavorite(p.id)}>{p.favorite ? '★' : '☆'}</button><button type="button" title="Edit connection" aria-label="Edit connection" onClick={() => openDialog(p)}>✎</button><button type="button" title="Duplicate connection" aria-label="Duplicate connection" onClick={() => duplicateConnection(p)}>⧉</button><button type="button" title="Delete connection" aria-label="Delete connection" onClick={() => deleteConnection(p)}>×</button></div></div>)}</section>) : <div className="empty-side">Add a connection to get started.</div>}</div><div className="objects-panel">{renderObjectBrowser()}</div><div className="sidebar-footer"><span className="dot" />Credentials are encrypted on this device</div></aside>
-      <section className="workspace"><div className="tabbar"><div className="tab active">Query workspace</div><div className="tab-hint">{engine ? `${engine.label} · ${isConnected ? 'connected' : 'not connected'}` : 'Select a connection to begin'}</div></div>
-        <div className="toolbar"><div className="selected-connection"><span className={`connection-dot ${isConnected ? 'online' : ''}`} />{active?.name || 'No connection selected'}</div><div className="toolbar-actions"><Button disabled={!active || isConnected || busy} onClick={connect}>Connect</Button><Button disabled={!isConnected || busy} onClick={disconnect}>Disconnect</Button><Button disabled={!isConnected || busy} onClick={runQuery}>{busy ? 'Working…' : '▶ Run'}</Button></div></div>
-        <section className="editor-area"><div className="editor-label"><span>{engine ? `${engine.label.toUpperCase()} · QUERY` : 'QUERY EDITOR'}</span><span>Ctrl / ⌘ + Enter to run · Ctrl / ⌘ + Alt + C connect · D disconnect · R refresh tree</span></div><textarea spellCheck="false" aria-label="Query editor" value={query} onChange={e => { setQuery(e.target.value); if (activeId) setLastQueries(queries => ({ ...queries, [activeId]: e.target.value })); }} onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runQuery(); } }} /><div className="editor-help">{engine?.help || 'SQL mode · Run a query against the selected SQL connection.'}</div></section>
-        <section className="result-area"><Card className="result-card" title={<span>Results <small className="result-meta">{meta}</small></span>} actions={<div className="result-actions"><Button className={view === 'table' ? 'view-active' : ''} onClick={() => setView('table')}>Table</Button><Button className={view === 'json' ? 'view-active' : ''} onClick={() => setView('json')}>JSON</Button><Button disabled={!result} onClick={exportResult}>Export JSON</Button><Button disabled={!result} onClick={exportCsv}>Export CSV</Button></div>} padded={false}>{resultPanel()}</Card></section>
-        <footer className="statusbar"><span>{status}</span><span>Local desktop app · v0.1.0</span></footer>
-      </section>
-    </main>
-    <dialog ref={formDialog} className="modal" onCancel={e => { e.preventDefault(); setDialogOpen(false); }}><form onSubmit={addConnection}><div className="modal-head"><div><h2>{editingId ? 'Edit connection' : 'New connection'}</h2><p>Credentials are encrypted before they are saved on this device.</p></div><Button type="button" className="icon-button" onClick={() => setDialogOpen(false)}>✕</Button></div>{field('Connection name','name','Development database','text',true)}{field('Folder / group','group','Connections')}<label className="form-field">Database type<select value={profile.type} onChange={e => selectEngine(e.target.value)}>{Object.entries(engines).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}</select></label><div className="dynamic-fields">{dynamicFields()}</div>{formError && <Alert tone={testState === 'success' ? 'success' : testState === 'failed' ? 'danger' : 'info'}>{formError}</Alert>}<div className="modal-actions"><Button type="button" disabled={testState === 'testing'} onClick={testConnection}>{testState === 'testing' ? 'Testing…' : 'Test connection'}</Button><Button type="button" onClick={() => setDialogOpen(false)}>Cancel</Button><Button type="submit">{editingId ? 'Save changes' : 'Save connection'}</Button></div></form></dialog>
-    <dialog ref={recordEditorDialog} className="modal record-dialog" onCancel={e => { e.preventDefault(); setRecordEditorOpen(false); }}><form className="record-dialog-content" onSubmit={applyRecordChange}><div className="modal-head"><div><h2>{recordAction === 'insert' ? 'Insert record' : recordAction === 'edit' ? 'Edit record' : 'Delete record'}</h2><p>{selectedObject?.name} · Enter record data as JSON</p></div><Button type="button" onClick={() => setRecordEditorOpen(false)}>Close</Button></div>{formError && <Alert tone="danger">{formError}</Alert>}<textarea className="record-editor" value={recordJsonText} onChange={e => setRecordJsonText(e.target.value)} spellCheck="false" aria-label="Record JSON" />{recordAction === 'delete' && <p>Confirm the record identity above. The delete action cannot be undone.</p>}<div className="modal-actions"><Button type="button" onClick={() => setRecordEditorOpen(false)}>Cancel</Button><Button type="submit">{recordAction === 'insert' ? 'Insert' : recordAction === 'edit' ? 'Save changes' : 'Delete'}</Button></div></form></dialog>
-    <dialog ref={recordDialog} className="modal record-dialog" onCancel={e => { e.preventDefault(); setRecordOpen(false); }}><div className="record-dialog-content"><div className="modal-head"><div><h2>Record contents</h2><p>Complete row or document data</p></div><Button type="button" onClick={() => setRecordOpen(false)}>Close</Button></div><pre className="json-view">{JSON.stringify(selectedJson, null, 2)}</pre><div className="modal-actions"><Button onClick={() => copyText(selectedJson)}>Copy record</Button></div></div></dialog>
-  </div></ThemeProvider>;
+  const sidebarNode = <div className="flex h-full w-72 flex-col border-r border-app-border bg-app-card">
+    <Sidebar label="Connections" bordered={false} density="dense" className="!h-auto !w-full max-h-[42%] min-h-0 flex-none" activeKey={activeId || undefined}
+      items={connectionItems}
+      header={<Flex justify="between" align="center"><span className="text-xs font-semibold uppercase tracking-widest text-app-muted">Connections</span><Flex gap={1}><Button variant="flat" tooltip="Refresh connections" aria-label="Refresh connections" onClick={refreshConnections}><RefreshIcon /></Button><Button variant="flat" tooltip="New connection" aria-label="New connection" onClick={() => openDialog()}><PlusIcon /></Button></Flex></Flex>}
+    />
+    {!connectionItems.length && <HelperText className="px-4 pb-3">Add a connection to get started.</HelperText>}
+    <Divider />
+    <div className="min-h-0 flex-1 overflow-y-auto">{renderObjectBrowser()}</div>
+    <Divider />
+    <HelperText className="px-4 py-2">Credentials are encrypted on this device</HelperText>
+  </div>;
+
+  const connectionMenu = [
+    { key: 'edit', label: 'Edit connection', icon: <EditIcon />, disabled: !active, hasDialog: true, onClick: () => openDialog(active) },
+    { key: 'duplicate', label: 'Duplicate', icon: <CopyIcon />, disabled: !active, onClick: () => duplicateConnection(active) },
+    { key: 'favorite', label: active?.favorite ? 'Remove favorite' : 'Add favorite', icon: <StarIcon />, disabled: !active, onClick: () => toggleFavorite(active.id) },
+    { key: 'refresh', label: 'Refresh objects', icon: <RefreshIcon />, disabled: !isConnected, onClick: () => loadObjectTree() },
+    { key: 'delete', label: 'Delete connection', icon: <Trash2Icon />, tone: 'warning', disabled: !active, hasDialog: true, onClick: () => setDeleteTarget(active) }
+  ];
+  const exportMenu = [
+    { key: 'json', label: 'Export JSON', icon: <DownloadIcon />, disabled: !result, onClick: exportResult },
+    { key: 'csv', label: 'Export CSV', icon: <DownloadIcon />, disabled: !result, onClick: exportCsv }
+  ];
+
+  return <ThemeProvider storageKey="universal-db-theme">
+    <AppShell className="[&_main]:!p-2" sidebarTitle="Connections" sidebar={sidebarNode}
+      header={<AppBar embedded logo={<img className="h-8 w-8 object-contain" src={commandMark} alt="" />} brand="Universal DB Workbench"
+        actions={<Flex gap={2} align="center"><Chip tone={statusTone} size="sm">{statusLabel}</Chip><Button onClick={() => openDialog()}><PlusIcon /> New connection</Button></Flex>} />}>
+      <Stack gap={2}>
+        <Flex gap={2} align="center" justify="between" wrap>
+          <Flex gap={2} align="baseline" className="min-w-0"><strong className="truncate text-sm">{active?.name || 'No connection selected'}</strong><HelperText className="truncate">{engine?.help || 'Select or create a connection to begin'}</HelperText></Flex>
+          <Flex gap={2} align="center">
+            <Button disabled={!active || isConnected || busy} onClick={() => connect()}><PowerIcon /> Connect</Button>
+            <Button variant="secondary" disabled={!isConnected || busy} onClick={() => disconnect()}>Disconnect</Button>
+            <Button disabled={!isConnected || busy} tooltip="Ctrl / ⌘ + Enter" onClick={() => runQuery()}><PlayIcon /> {busy ? 'Working…' : 'Run'}</Button>
+            <ActionMenu label="Connection actions" variant="secondary" placement="bottom-end" trigger={<MoreVerticalIcon />} items={connectionMenu} />
+          </Flex>
+        </Flex>
+        <div className="[&_textarea]:font-mono [&_textarea]:text-[13px]">
+          <TextArea aria-label="Query editor" rows={3} spellCheck={false} value={query}
+            onChange={value => { setQuery(value); if (activeId) setLastQueries(queries => ({ ...queries, [activeId]: value })); }}
+            onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runQuery(); } }} />
+        </div>
+        <Card title="Results" subtitle={`${meta} · ${status}`} padded={false}
+          actions={<Flex gap={2} align="center" wrap>
+            <ToggleButtonGroup exclusive aria-label="Result view" value={view} onChange={value => value && setView(value)}><ToggleButton value="table">Table</ToggleButton><ToggleButton value="json">JSON</ToggleButton></ToggleButtonGroup>
+            <ActionMenu label="Export results" variant="secondary" placement="bottom-end" trigger={<><DownloadIcon /> Export</>} items={exportMenu} />
+          </Flex>}>
+          {resultBody()}
+        </Card>
+      </Stack>
+    </AppShell>
+
+    <Modal open={dialogOpen} onClose={() => setDialogOpen(false)} title={editingId ? 'Edit connection' : 'New connection'} as="form" noValidate onSubmit={addConnection} maxWidth="max-w-xl" busy={testState === 'testing'}
+      footer={<Flex justify="end" gap={2}><Button type="button" variant="secondary" disabled={testState === 'testing'} onClick={testConnection}>{testState === 'testing' ? 'Testing…' : 'Test connection'}</Button><Button type="button" variant="flat" onClick={() => setDialogOpen(false)}>Cancel</Button><Button type="submit">{editingId ? 'Save changes' : 'Save connection'}</Button></Flex>}>
+      <Stack gap={3} className="p-5">
+        <HelperText>Credentials are encrypted before they are saved on this device.</HelperText>
+        <div className="grid grid-cols-2 gap-3">{textField('Connection name', 'name', 'Development database', { required: true })}{textField('Folder / group', 'group', 'Connections')}</div>
+        <Select label="Database type" value={profile.type} onChange={selectEngine} options={Object.entries(engines).map(([value, item]) => ({ value, label: item.label }))} />
+        {dynamicFields()}
+        {formError && <Alert tone={testState === 'success' ? 'success' : testState === 'failed' ? 'danger' : 'info'}>{formError}</Alert>}
+      </Stack>
+    </Modal>
+
+    <Modal open={recordEditorOpen} onClose={() => setRecordEditorOpen(false)} as="form" noValidate onSubmit={applyRecordChange} maxWidth="max-w-2xl" tone={recordAction === 'delete' ? 'danger' : 'default'}
+      title={`${recordAction === 'insert' ? 'Insert' : recordAction === 'edit' ? 'Edit' : 'Delete'} record · ${selectedObject?.name || ''}`}
+      footer={<Flex justify="end" gap={2}><Button type="button" variant="flat" onClick={() => setRecordEditorOpen(false)}>Cancel</Button><Button type="submit" variant={recordAction === 'delete' ? 'danger' : 'default'}>{recordAction === 'insert' ? 'Insert' : recordAction === 'edit' ? 'Save changes' : 'Delete'}</Button></Flex>}>
+      <Stack gap={3} className="p-5">
+        {formError && <Alert tone="danger">{formError}</Alert>}
+        {recordAction === 'delete' && <Alert tone="warning">Confirm the record below. Deleting cannot be undone.</Alert>}
+        <div className="[&_textarea]:font-mono [&_textarea]:text-xs">
+          <TextArea label="Record JSON" rows={14} spellCheck={false} value={recordJsonText} onChange={setRecordJsonText} />
+        </div>
+      </Stack>
+    </Modal>
+
+    <Modal open={recordOpen} onClose={() => setRecordOpen(false)} title="Record contents" maxWidth="max-w-2xl"
+      footer={<Flex justify="end" gap={2}><Button variant="secondary" onClick={() => copyText(selectedJson)}><CopyIcon /> Copy record</Button><Button onClick={() => setRecordOpen(false)}>Close</Button></Flex>}>
+      <div className="p-5"><CodeDisplay language="json" code={JSON.stringify(selectedJson, null, 2) || ''} maxHeight={420} copyable={false} /></div>
+    </Modal>
+
+    <ConfirmDialog open={!!deleteTarget} tone="danger" title="Delete connection" confirmLabel="Delete" onClose={() => setDeleteTarget(null)} onConfirm={() => deleteConnection(deleteTarget)}>
+      Delete connection “{deleteTarget?.name}”? This cannot be undone.
+    </ConfirmDialog>
+  </ThemeProvider>;
 }
 
 createRoot(document.getElementById('root')).render(<App />);
-
