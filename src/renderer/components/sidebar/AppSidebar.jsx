@@ -1,0 +1,59 @@
+import React, { useState } from 'react';
+import { Button, ChevronLeftIcon, ChevronRightIcon, Divider, Flex, HelperText, PlusIcon, RefreshIcon, Sidebar } from 'xedonium';
+import { NAV_STORAGE_KEY, engines } from '../../constants.js';
+import Logo from '../Logo.jsx';
+import StatusDot from '../StatusDot.jsx';
+
+const readCollapsed = () => { try { return localStorage.getItem(NAV_STORAGE_KEY) === '1' ? true : null; } catch { return null; } };
+
+// Brand, new-connection button, connection list and (as children) the object browser.
+// `autoCollapsed` is the responsive default; the user's choice (saved locally) overrides it.
+export default function AppSidebar({ close, inDrawer, autoCollapsed, profiles, activeId, connectionStatus, onChoose, onNew, onRefresh, children }) {
+  const [navCollapsed, setNavCollapsed] = useState(readCollapsed);
+  const collapsed = !inDrawer && (navCollapsed ?? autoCollapsed);
+
+  function toggleNav(currentlyCollapsed) {
+    const next = !currentlyCollapsed;
+    setNavCollapsed(next);
+    try { localStorage.setItem(NAV_STORAGE_KEY, next ? '1' : '0'); } catch { /* storage unavailable */ }
+  }
+
+  const ordered = [...profiles].sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || (b.lastUsedAt || 0) - (a.lastUsedAt || 0) || a.name.localeCompare(b.name));
+  const groupOf = p => p.group?.trim() || 'Connections';
+  const groups = [...new Set(ordered.map(groupOf))];
+  const showSections = groups.length > 1 || groups[0] !== 'Connections';
+  const items = groups.flatMap(group => [
+    ...(showSections && !collapsed ? [{ key: `section:${group}`, label: group, section: true }] : []),
+    ...ordered.filter(p => groupOf(p) === group).map(p => ({
+      key: p.id, label: `${p.favorite ? '★ ' : ''}${p.name}`,
+      icon: <span className="inline-flex items-center gap-1.5 text-[10px] font-bold"><StatusDot state={connectionStatus(p.id)} />{engines[p.type].icon}</span>,
+      onClick: () => { onChoose(p); close(); }
+    }))
+  ]);
+
+  return (
+    <div className={`flex h-full flex-col border-r border-app-border bg-app-card ${inDrawer ? 'w-full' : collapsed ? 'w-14' : 'w-64'}`}>
+      <Flex align="center" justify={collapsed ? 'center' : 'between'} gap={2} className={`shrink-0 border-b border-app-border ${collapsed ? 'px-1 py-2' : 'px-3 py-2'}`}>
+        <Flex align="center" gap={2} className="min-w-0">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center text-app-strong"><Logo className="h-7 w-7" /></span>
+          {!collapsed && <span className="truncate text-sm font-bold" title="Universal DB Workbench">DB Workbench</span>}
+        </Flex>
+        {!collapsed && !inDrawer && <Button variant="flat" tooltip="Collapse sidebar" aria-label="Collapse sidebar" onClick={() => toggleNav(false)}><ChevronLeftIcon /></Button>}
+      </Flex>
+      <Flex direction={collapsed ? 'column' : 'row'} align="center" gap={2} className={`shrink-0 border-b border-app-border ${collapsed ? 'px-1 py-2' : 'px-3 py-2'}`}>
+        <Button className={collapsed ? '' : 'flex-1'} tooltip={collapsed ? 'New connection' : undefined} tooltipPlacement="right" aria-label="New connection" onClick={() => { onNew(); close(); }}><PlusIcon />{!collapsed && ' New connection'}</Button>
+        {collapsed && <Button variant="flat" tooltip="Expand sidebar" tooltipPlacement="right" aria-label="Expand sidebar" onClick={() => toggleNav(true)}><ChevronRightIcon /></Button>}
+      </Flex>
+      <Sidebar label="Connections" bordered={false} density="dense" collapsed={collapsed} className="!h-auto !w-full max-h-[42%] min-h-0 flex-none" activeKey={activeId || undefined}
+        items={items} headerClassName={collapsed ? 'hidden' : 'px-3 py-2'}
+        header={<Flex justify="between" align="center"><span className="text-xs font-semibold uppercase tracking-widest text-app-muted">Connections</span><Button variant="flat" tooltip="Refresh connections" aria-label="Refresh connections" onClick={onRefresh}><RefreshIcon /></Button></Flex>} />
+      {!collapsed && <>
+        {!items.length && <HelperText className="px-4 pb-3">Add a connection to get started.</HelperText>}
+        <Divider />
+        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+        <Divider />
+        <HelperText className="px-4 py-2">Credentials are encrypted on this device</HelperText>
+      </>}
+    </div>
+  );
+}
