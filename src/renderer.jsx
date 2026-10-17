@@ -5,9 +5,8 @@ import {
   Select, Checkbox, TextArea, Input, DataGrid, CodeDisplay, Tree, ActionMenu, ToggleButton, ToggleButtonGroup,
   HelperText, Loader, Flex, Stack, Divider,
   DatabaseIcon, PlayIcon, PlusIcon, SearchIcon, RefreshIcon, StarIcon, CopyIcon, Trash2Icon, DownloadIcon, EditIcon,
-  MoreVerticalIcon, TableIcon, PowerIcon, EyeIcon, FolderIcon
+  MoreVerticalIcon, TableIcon, PowerIcon, EyeIcon, FolderIcon, ChevronLeftIcon, ChevronRightIcon
 } from 'xedonium';
-import commandMark from './command-mark.svg';
 import 'xedonium/styles.css';
 import './styles.css';
 
@@ -19,6 +18,10 @@ const engines = {
   firestore: { label: 'Firebase Firestore', icon: 'FS', query: 'collections', help: 'Firestore mode · Use “collections” or “read collection_name LIMIT 100”.' }
 };
 const blankProfile = { name: '', type: 'mysql', host: '', port: '3306', database: '', username: '', password: '', uri: '', connectionString: '', restUrl: '', apiKey: '', projectId: '', serviceAccountPath: '', ssl: false, sslAllowUntrusted: false, sshEnabled: false, sshHost: '', sshPort: '22', sshUsername: '', sshAuthMethod: 'password', sshPassword: '', sshKeyPath: '', sshPassphrase: '', sshRemoteHost: '' };
+
+function Logo({ className = 'h-7 w-7' }) {
+  return <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 2H2v8h2V2zm16 0h2v8h-2V2zm-6 6h-4V2H4v2h4v4H4v2h4v4H4v2h4v4H4v2h6v-6h4v6h2v-6h4v-2h-4v-4h4V8h-4V2h-2v6zm-4 6v-4h4v4h-4zM20 2h-4v2h4V2zM2 14h2v8H2v-8zm14 6h4v2h-4v-2zm6-6h-2v8h2v-8z" /></svg>;
+}
 
 function App() {
   const [profiles, setProfiles] = useState([]);
@@ -38,6 +41,7 @@ function App() {
   const [objectSearch, setObjectSearch] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [navCollapsed, setNavCollapsed] = useState(() => { try { return localStorage.getItem('udw-nav-collapsed') === '1' ? true : null; } catch { return null; } });
   const [recordOpen, setRecordOpen] = useState(false);
   const [recordEditorOpen, setRecordEditorOpen] = useState(false);
   const [recordAction, setRecordAction] = useState('insert');
@@ -57,11 +61,6 @@ function App() {
   const active = profiles.find(p => p.id === activeId);
   const isConnected = active && connected.includes(active.id);
   const engine = active ? engines[active.type] : null;
-
-  useEffect(() => {
-    const iconLink = document.querySelector('link[rel="icon"]');
-    if (iconLink) iconLink.href = commandMark;
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -512,17 +511,30 @@ function App() {
   const statusTone = isConnected ? 'success' : connectionStates[activeId] === 'failed' ? 'danger' : 'default';
   const statusLabel = isConnected ? 'Connected' : active ? (connectionStates[activeId] === 'connecting' ? 'Connecting…' : connectionStates[activeId] === 'failed' ? 'Connection failed' : 'Not connected') : 'No active connection';
 
-  const sidebarNode = <div className="flex h-full w-72 flex-col border-r border-app-border bg-app-card">
-    <Sidebar label="Connections" bordered={false} density="dense" className="!h-auto !w-full max-h-[42%] min-h-0 flex-none" activeKey={activeId || undefined}
-      items={connectionItems}
-      header={<Flex justify="between" align="center"><span className="text-xs font-semibold uppercase tracking-widest text-app-muted">Connections</span><Flex gap={1}><Button variant="flat" tooltip="Refresh connections" aria-label="Refresh connections" onClick={refreshConnections}><RefreshIcon /></Button><Button variant="flat" tooltip="New connection" aria-label="New connection" onClick={() => openDialog()}><PlusIcon /></Button></Flex></Flex>}
-    />
-    {!connectionItems.length && <HelperText className="px-4 pb-3">Add a connection to get started.</HelperText>}
-    <Divider />
-    <div className="min-h-0 flex-1 overflow-y-auto">{renderObjectBrowser()}</div>
-    <Divider />
-    <HelperText className="px-4 py-2">Credentials are encrypted on this device</HelperText>
-  </div>;
+  function toggleNav(currentlyCollapsed) {
+    const next = !currentlyCollapsed;
+    setNavCollapsed(next);
+    try { localStorage.setItem('udw-nav-collapsed', next ? '1' : '0'); } catch {}
+  }
+  const renderSidebar = (close, { inDrawer, collapsed: autoCollapsed }) => {
+    const collapsed = !inDrawer && (navCollapsed ?? autoCollapsed);
+    const items = collapsed ? connectionItems.filter(item => !item.section) : connectionItems;
+    return <div className={`flex h-full flex-col border-r border-app-border bg-app-card ${inDrawer ? 'w-full' : collapsed ? 'w-14' : 'w-64'}`}>
+      <Sidebar label="Connections" bordered={false} density="dense" collapsed={collapsed} className="!h-auto !w-full max-h-[42%] min-h-0 flex-none" activeKey={activeId || undefined}
+        items={items.map(item => item.section ? item : { ...item, onClick: () => { item.onClick(); close(); } })}
+        headerClassName={collapsed ? 'flex justify-center px-1 py-2' : 'px-3 py-2'}
+        header={collapsed
+          ? <Button variant="flat" tooltip="Expand sidebar" tooltipPlacement="right" aria-label="Expand sidebar" onClick={() => toggleNav(true)}><ChevronRightIcon /></Button>
+          : <Flex justify="between" align="center"><span className="text-xs font-semibold uppercase tracking-widest text-app-muted">Connections</span><Flex gap={1}><Button variant="flat" tooltip="Refresh connections" aria-label="Refresh connections" onClick={refreshConnections}><RefreshIcon /></Button><Button variant="flat" tooltip="New connection" aria-label="New connection" onClick={() => { openDialog(); close(); }}><PlusIcon /></Button>{!inDrawer && <Button variant="flat" tooltip="Collapse sidebar" aria-label="Collapse sidebar" onClick={() => toggleNav(false)}><ChevronLeftIcon /></Button>}</Flex></Flex>} />
+      {!collapsed && <>
+        {!connectionItems.length && <HelperText className="px-4 pb-3">Add a connection to get started.</HelperText>}
+        <Divider />
+        <div className="min-h-0 flex-1 overflow-y-auto">{renderObjectBrowser()}</div>
+        <Divider />
+        <HelperText className="px-4 py-2">Credentials are encrypted on this device</HelperText>
+      </>}
+    </div>;
+  };
 
   const connectionMenu = [
     { key: 'edit', label: 'Edit connection', icon: <EditIcon />, disabled: !active, hasDialog: true, onClick: () => openDialog(active) },
@@ -537,9 +549,9 @@ function App() {
   ];
 
   return <ThemeProvider storageKey="universal-db-theme">
-    <AppShell className="[&_main]:!p-2" sidebarTitle="Connections" sidebar={sidebarNode}
-      header={<AppBar embedded logo={<img className="h-8 w-8 object-contain" src={commandMark} alt="" />} brand="Universal DB Workbench"
-        actions={<Flex gap={2} align="center"><Chip tone={statusTone} size="sm">{statusLabel}</Chip><Button onClick={() => openDialog()}><PlusIcon /> New connection</Button></Flex>} />}>
+    <AppShell className="[&_main]:!p-2 [&_header_button]:!h-9 [&_header_button]:!min-h-0 [&_header_button]:!py-0" sidebarTitle="Connections" sidebar={renderSidebar} sidebarCollapsedBelow="lg"
+      header={<AppBar embedded logo={<span className="flex h-9 w-9 items-center justify-center text-app-strong"><Logo className="h-7 w-7" /></span>} brand={<span className="flex h-9 items-center">Universal DB Workbench</span>}
+        actions={<Flex gap={2} align="center"><Chip tone={statusTone} className="hidden !h-9 items-center px-3 text-xs sm:inline-flex">{statusLabel}</Chip><Button aria-label="New connection" onClick={() => openDialog()}><PlusIcon /><span className="hidden sm:inline"> New connection</span></Button></Flex>} />}>
       <Stack gap={2}>
         <Flex gap={2} align="center" justify="between" wrap>
           <Flex gap={2} align="baseline" className="min-w-0"><strong className="truncate text-sm">{active?.name || 'No connection selected'}</strong><HelperText className="truncate">{engine?.help || 'Select or create a connection to begin'}</HelperText></Flex>
