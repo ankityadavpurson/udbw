@@ -24,7 +24,7 @@ function createWindow() {
       sandbox: true
     }
   });
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
 }
 
 app.whenReady().then(() => {

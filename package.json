@@ -4,8 +4,9 @@
   "description": "Cross-platform desktop database workbench for MySQL, PostgreSQL, MongoDB, Supabase and Firebase Firestore",
   "main": "src/main.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron .",
+    "start": "yarn build:ui && electron .",
+    "dev": "yarn build:ui && electron .",
+    "build:ui": "vite build",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
   },
@@ -14,19 +15,39 @@
     "firebase-admin": "^13.5.0",
     "mongodb": "^6.19.0",
     "mysql2": "^3.14.3",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "react": "^19",
+    "react-dom": "^19",
+    "xedonium": "^1.14.0"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^5",
+    "autoprefixer": "^10.6.1",
     "electron": "^38.2.0",
-    "electron-builder": "^26.0.12"
+    "electron-builder": "^26.0.12",
+    "postcss": "^8.5.30",
+    "tailwindcss": "^3.4",
+    "vite": "^7"
   },
   "build": {
     "appId": "dev.universaldb.workbench",
     "productName": "Universal DB Workbench",
-    "files": ["src/**/*", "package.json"],
-    "directories": { "output": "release" },
-    "win": { "target": "nsis" },
-    "mac": { "target": "dmg" },
-    "linux": { "target": "AppImage" }
+    "files": [
+      "src/**/*",
+      "dist/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   }
 }
