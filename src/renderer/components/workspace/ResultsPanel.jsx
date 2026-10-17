@@ -7,9 +7,9 @@ import { isDocumentResult, toTable } from '../../lib/results.js';
 import DocumentList from './DocumentList.jsx';
 import NestedValue, { plainText } from './NestedValue.jsx';
 
-export default function ResultsPanel({ tab, status, records, isConnected, busy, onViewChange, onSelectIndex, onRerun, onCopyRow, onExportJson, onExportCsv }) {
-  const { result, error, view, meta, selectedIndex } = tab;
-  const { hasSelection, selectedJson, canEditSelected, openEditor, setViewerOpen } = records;
+export default function ResultsPanel({ tab, status, records, isConnected, busy, onViewChange, onSelect, onRerun, onCopyRows, onExportJson, onExportCsv }) {
+  const { result, error, view, meta, selected } = tab;
+  const { hasSelection, selectedCount, selectedDocs, selectedJson, canEditSelected, canDeleteSelected, openEditor, setViewerOpen, setBulkOpen } = records;
 
   const table = toTable(result);
   const columns = table.columns.map((column, j) => ({
@@ -33,20 +33,19 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
     if (!columns.length) return <Stack gap={1} className="px-6 py-10 text-center"><h2 className="text-base font-semibold">{result.message || 'Command completed'}</h2><HelperText>No tabular rows returned.</HelperText></Stack>;
     return (
       <Stack gap={2} className="py-2">
-        <Flex gap={2} wrap align="center" className="px-2">
+        <Flex gap={2} wrap align="center" className="compact-buttons px-2">
           <Button variant="secondary" disabled={!records.selectedObject || records.selectedObject.type === 'view'} onClick={() => openEditor('insert')}><PlusIcon /> Insert</Button>
           <Button variant="secondary" disabled={!canEditSelected} onClick={() => openEditor('edit')}><EditIcon /> Edit</Button>
-          <Button variant="danger" disabled={!canEditSelected} onClick={() => openEditor('delete')}><Trash2Icon /> Delete</Button>
+          <Button variant="danger" disabled={!canDeleteSelected} onClick={() => (selectedCount > 1 ? setBulkOpen(true) : openEditor('delete'))}><Trash2Icon /> {selectedCount > 1 ? `Delete ${selectedCount}` : 'Delete'}</Button>
           <Divider orientation="vertical" className="h-6" />
-          <Button variant="secondary" disabled={!hasSelection} onClick={() => setViewerOpen(true)}><EyeIcon /> View record</Button>
-          <Button variant="secondary" disabled={!hasSelection} onClick={() => onCopyRow(selectedJson)}><CopyIcon /> Copy row</Button>
+          <Button variant="secondary" disabled={selectedCount !== 1} onClick={() => setViewerOpen(true)}><EyeIcon /> View record</Button>
+          <Button variant="secondary" disabled={!hasSelection} onClick={() => onCopyRows(selectedCount === 1 ? selectedJson : selectedDocs)}><CopyIcon /> {selectedCount > 1 ? 'Copy rows' : 'Copy row'}</Button>
           <Button variant="flat" disabled={!isConnected || busy} tooltip="Re-run query" onClick={onRerun}><RefreshIcon /></Button>
         </Flex>
         <DataGrid columns={columns} rows={rows} rowKey="__i" selectable pageSize={50} pageSizeOptions={[25, 50, 100]}
-          selected={hasSelection ? [selectedIndex] : []}
-          onSelectionChange={keys => { const fresh = keys.filter(k => k !== selectedIndex); onSelectIndex(fresh.length ? fresh[fresh.length - 1] : keys.length ? keys[keys.length - 1] : null); }}
+          selected={selected} onSelectionChange={onSelect}
           empty="No rows returned." caption="Query results"
-          className="!gap-2 [&_div.overflow-x-auto]:!border-x-0 [&>div:last-child]:px-2" />
+          className="compact-grid !gap-2 [&_div.overflow-x-auto]:!border-x-0 [&>div:last-child]:px-2" />
       </Stack>
     );
   };
@@ -57,8 +56,8 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
   ];
 
   return (
-    <Card title="Results" subtitle={`${meta} · ${status}`} padded={false}
-      actions={<Flex gap={2} align="center" wrap>
+    <Card className="compact-card" title="Results" subtitle={`${meta} · ${status}`} padded={false}
+      actions={<Flex gap={2} align="center" wrap className="compact-buttons">
         <ToggleButtonGroup exclusive aria-label="Result view" value={view} onChange={value => value && onViewChange(value)}><ToggleButton value="table">Table</ToggleButton><ToggleButton value="json">JSON</ToggleButton></ToggleButtonGroup>
         <ActionMenu label="Export results" variant="secondary" placement="bottom-end" trigger={<><DownloadIcon /> Export</>} items={exportItems} />
       </Flex>}>

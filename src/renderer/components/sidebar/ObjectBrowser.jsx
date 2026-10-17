@@ -33,7 +33,7 @@ export default function ObjectBrowser({ active, isConnected, tree, selectedObjec
   });
 
   return (
-    <Stack gap={2} className="p-2">
+    <Stack gap={2} className="compact-fields p-2">
       <Flex justify="between" align="center">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-app-muted">Database objects</span>
         <Button variant="flat" tooltip="Refresh objects" aria-label="Refresh objects" disabled={treeLoading} onClick={() => loadObjectTree()}><RefreshIcon /></Button>

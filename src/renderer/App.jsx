@@ -67,7 +67,7 @@ export default function App() {
     let target = tabsApi.connTabs.find(t => t.selectedObject && objectId(t.selectedObject) === objectId(object));
     if (target) tabsApi.setActiveTabId(target.id);
     else { target = tabsApi.addTab({ title: object.name, selectedObject: object }, statement); if (!target) return; }
-    tabsApi.patchTab({ query: statement, selectedObject: object, selectedIndex: null }, target.id);
+    tabsApi.patchTab({ query: statement, selectedObject: object, selected: [] }, target.id);
     setStatus(`Browsing ${object.name}…`); await tabsApi.runQuery(statement, target.id);
   }
 
@@ -95,11 +95,11 @@ export default function App() {
   });
 
   const connectionMenu = [
-    { key: 'edit', label: 'Edit connection', icon: <EditIcon />, disabled: !active, hasDialog: true, onClick: () => dialog.openDialog(active) },
+    { key: 'edit', label: 'Edit connection', icon: <EditIcon />, disabled: !active, onClick: () => dialog.openDialog(active) },
     { key: 'duplicate', label: 'Duplicate', icon: <CopyIcon />, disabled: !active, onClick: () => conn.duplicateConnection(active) },
     { key: 'favorite', label: active?.favorite ? 'Remove favorite' : 'Add favorite', icon: <StarIcon />, disabled: !active, onClick: () => conn.toggleFavorite(active.id) },
     { key: 'refresh', label: 'Refresh objects', icon: <RefreshIcon />, disabled: !isConnected, onClick: () => tree.loadObjectTree() },
-    { key: 'delete', label: 'Delete connection', icon: <Trash2Icon />, tone: 'warning', disabled: !active, hasDialog: true, onClick: () => setDeleteTarget(active) }
+    { key: 'delete', label: 'Delete connection', icon: <Trash2Icon />, tone: 'danger', disabled: !active, onClick: () => setDeleteTarget(active) }
   ];
 
   const sidebar = (close, inDrawer, autoCollapsed) => (
@@ -121,7 +121,7 @@ export default function App() {
             <QueryEditor value={tab.query} onRun={() => tabsApi.runQuery()}
               onChange={value => { tabsApi.setQuery(value); if (activeId) conn.setLastQuery(activeId, value); }} />
             <ResultsPanel tab={tab} status={status} records={records} isConnected={isConnected} busy={busy}
-              onViewChange={tabsApi.setView} onSelectIndex={tabsApi.setSelectedIndex} onRerun={() => tabsApi.runQuery()} onCopyRow={copyText}
+              onViewChange={tabsApi.setView} onSelect={tabsApi.setSelected} onRerun={() => tabsApi.runQuery()} onCopyRows={copyText}
               onExportJson={() => downloadJson(tab.result)} onExportCsv={() => downloadCsv(tab.result)} />
           </Stack>
         </main>
@@ -134,6 +134,9 @@ export default function App() {
       <ConnectionDialog dialog={dialog} groups={[...new Set(conn.profiles.map(p => p.group?.trim() || 'Connections'))]} />
       <RecordEditorDialog records={records} objectName={tab.selectedObject?.name} />
       <RecordViewerDialog open={records.viewerOpen} onClose={() => records.setViewerOpen(false)} record={records.selectedJson} onCopy={copyText} />
+      <ConfirmDialog open={records.bulkOpen} tone="danger" title="Delete records" confirmLabel="Delete" busy={records.bulkBusy} error={records.bulkError} onClose={() => records.setBulkOpen(false)} onConfirm={records.bulkDelete}>
+        Delete {records.selectedCount} selected records? This cannot be undone.
+      </ConfirmDialog>
       <ConfirmDialog open={!!deleteTarget} tone="danger" title="Delete connection" confirmLabel="Delete" onClose={() => setDeleteTarget(null)} onConfirm={() => deleteConnection(deleteTarget)}>
         Delete connection “{deleteTarget?.name}”? This cannot be undone.
       </ConfirmDialog>

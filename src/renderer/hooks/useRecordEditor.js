@@ -8,14 +8,20 @@ export default function useRecordEditor({ active, tab, runQuery, setQuery, setSt
   const [action, setAction] = useState('insert');
   const [jsonText, setJsonText] = useState('{}');
   const [error, setError] = useState('');
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState('');
 
-  const { result, selectedIndex } = tab;
+  const { result, selected } = tab;
   // The collection/table being viewed: the one opened from the sidebar, or the one named in a typed find/read.
   const selectedObject = tab.selectedObject ?? inferObject(active, tab.query);
-  const hasSelection = selectedIndex !== null;
-  const selectedRow = hasSelection ? result?.rows?.[selectedIndex] : null;
-  const selectedJson = hasSelection ? (result?.json?.[selectedIndex] ?? selectedRow) : null;
-  const canEditSelected = hasSelection && canEditRecord(active, selectedObject, selectedJson);
+  const selectedCount = selected.length;
+  const hasSelection = selectedCount > 0;
+  const docAt = index => result?.json?.[index] ?? result?.rows?.[index];
+  const selectedDocs = selected.map(docAt);
+  const selectedJson = selectedCount === 1 ? selectedDocs[0] : null; // view / edit work on exactly one row
+  const canEditSelected = selectedCount === 1 && canEditRecord(active, selectedObject, selectedJson);
+  const canDeleteSelected = hasSelection && selectedDocs.every(doc => canEditRecord(active, selectedObject, doc));
 
   function openEditor(nextAction) {
     if (!selectedObject) return;
@@ -35,6 +41,22 @@ export default function useRecordEditor({ active, tab, runQuery, setQuery, setSt
     if (built.error) { setError(built.error); return; }
     setEditorOpen(false); setStatus(`${action === 'insert' ? 'Inserting' : action === 'edit' ? 'Updating' : 'Deleting'} record…`);
     if (await runQuery(built.statement)) { const select = selectStatement(active, object); setQuery(select); await runQuery(select); }
+  }
+
+  // Deletes every selected row, one statement each, then refreshes the tab's own query.
+  async function bulkDelete() {
+    if (!selectedObject) return;
+    setBulkBusy(true); setBulkError('');
+    let failure = '';
+    for (const doc of selectedDocs) {
+      const built = buildRecordStatement({ active, object: selectedObject, action: 'delete', record: {}, selectedJson: doc });
+      if (built.error) { failure = built.error; break; }
+      setStatus('Deleting records…');
+      if (!(await runQuery(built.statement))) { failure = 'A delete was rejected, so the rest were skipped. See the result panel.'; break; }
+    }
+    await runQuery(tab.query);
+    setBulkBusy(false);
+    if (failure) setBulkError(failure); else setBulkOpen(false);
   }
 
   // Runs a change, then re-runs the tab's own query so filters stay in place.
@@ -72,6 +94,7 @@ export default function useRecordEditor({ active, tab, runQuery, setQuery, setSt
   return {
     selectedObject, updateDocument, deleteDocument, cloneDocument,
     viewerOpen, setViewerOpen, editorOpen, setEditorOpen, action, jsonText, setJsonText, error,
-    hasSelection, selectedJson, canEditSelected, openEditor, apply
+    hasSelection, selectedCount, selectedDocs, selectedJson, canEditSelected, canDeleteSelected, openEditor, apply,
+    bulkOpen, setBulkOpen, bulkBusy, bulkError, bulkDelete
   };
 }

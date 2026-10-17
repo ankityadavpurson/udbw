@@ -13,9 +13,9 @@ export default function QueryTabs({ tabs, activeTabId, canAdd, onSelect, onClose
     )
   }));
   return (
-    <Flex gap={1} align="center">
+    <Flex gap={1} align="center" className="compact-tabs">
       <div className="min-w-0 flex-1"><Tabs value={activeTabId} onChange={onSelect} items={items} /></div>
-      <Button variant="flat" tooltip="New query tab (Ctrl+T)" aria-label="New query tab" disabled={!canAdd} onClick={onAdd}><PlusIcon /></Button>
+      <span className="compact-buttons compact-icons"><Button variant="flat" tooltip="New query tab (Ctrl+T)" aria-label="New query tab" disabled={!canAdd} onClick={onAdd}><PlusIcon /></Button></span>
     </Flex>
   );
 }

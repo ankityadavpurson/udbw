@@ -23,7 +23,7 @@ export default function ConnectionDialog({ dialog, groups }) {
         <Button type="button" variant="flat" onClick={close}>Cancel</Button>
         <Button type="submit">{editingId ? 'Save changes' : 'Save connection'}</Button>
       </Flex>}>
-      <Stack gap={3} className="p-5">
+      <Stack gap={3} className="compact-fields p-4">
         <HelperText>Credentials are encrypted before they are saved on this device.</HelperText>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Connection name" value={profile.name} onChange={value => update('name', value)} placeholder="Development database" required />

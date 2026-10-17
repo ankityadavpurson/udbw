@@ -38,7 +38,7 @@ export default function DocumentList({ documents, canEdit, onUpdate, onClone, on
     <Stack gap={2} className="py-2">
       <Flex justify="between" align="center" wrap gap={2} className="px-2">
         <HelperText>{documents.length} document{documents.length === 1 ? '' : 's'}</HelperText>
-        <Flex gap={2} wrap>
+        <Flex gap={2} wrap className="compact-buttons">
           <Button variant="flat" onClick={() => setOpen(new Set(visible.map((_, i) => i)))}>Expand all</Button>
           <Button variant="flat" onClick={() => { setOpen(new Set()); setEditing(null); }}>Collapse all</Button>
           <Button variant="secondary" disabled={!canEdit} onClick={onInsert}><PlusIcon /> Add document</Button>
@@ -60,7 +60,7 @@ export default function DocumentList({ documents, canEdit, onUpdate, onClone, on
                   {summarizeDocument(doc).map(([key, value], i) => <span key={key}>{i ? '  ·  ' : ''}<span className="text-app-text">{key}</span>: {value}</span>)}
                 </span>
                 {canEdit && !isEditing && (
-                  <span className="flex shrink-0 gap-1" onClick={e => e.stopPropagation()}>
+                  <span className="compact-buttons compact-icons flex shrink-0 gap-1" onClick={e => e.stopPropagation()}>
                     <Button variant="flat" tooltip="Edit document" aria-label={`Edit ${idOf(doc)}`} onClick={() => startEdit(index, doc)}><EditIcon /></Button>
                     <Button variant="flat" tooltip="Clone document" aria-label={`Clone ${idOf(doc)}`} onClick={() => clone(doc)}><CopyIcon /></Button>
                     <Button variant="flat" tooltip="Delete document" aria-label={`Delete ${idOf(doc)}`} onClick={() => setRemoving({ doc, error: '', busy: false })}><Trash2Icon /></Button>
@@ -74,7 +74,7 @@ export default function DocumentList({ documents, canEdit, onUpdate, onClone, on
                     <TextArea aria-label={`Edit document ${idOf(doc)}`} rows={Math.min(24, Math.max(6, editing.text.split(String.fromCharCode(10)).length + 1))} spellCheck={false}
                       value={editing.text} onChange={text => setEditing(e => ({ ...e, text }))} />
                   </div>
-                  <Flex gap={2} justify="end">
+                  <Flex gap={2} justify="end" className="compact-buttons">
                     <Button variant="flat" disabled={editing.saving} onClick={() => setEditing(null)}>Cancel</Button>
                     <Button disabled={editing.saving} onClick={() => save(doc)}>{editing.saving ? 'Updating…' : 'Update'}</Button>
                   </Flex>

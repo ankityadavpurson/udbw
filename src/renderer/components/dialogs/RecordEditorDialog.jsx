@@ -14,7 +14,7 @@ export default function RecordEditorDialog({ records, objectName }) {
         <Button type="button" variant="flat" onClick={close}>Cancel</Button>
         <Button type="submit" variant={danger ? 'danger' : 'default'}>{action === 'insert' ? 'Insert' : action === 'edit' ? 'Save changes' : 'Delete'}</Button>
       </Flex>}>
-      <Stack gap={3} className="p-5">
+      <Stack gap={3} className="compact-fields p-4">
         {error && <Alert tone="danger">{error}</Alert>}
         {danger && <Alert tone="warning">Confirm the record below. Deleting cannot be undone.</Alert>}
         <div className="[&_textarea]:font-mono [&_textarea]:text-xs">

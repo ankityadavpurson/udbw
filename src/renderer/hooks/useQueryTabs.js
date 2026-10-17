@@ -10,7 +10,7 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
   const makeTab = (connId, queryText, extra = {}) => ({
     id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, connId,
     title: extra.title ?? `Query ${(tabCounter.current[connId] = (tabCounter.current[connId] || 0) + 1)}`,
-    query: queryText, result: null, error: '', meta: 'No query executed', view: 'table', viewPinned: false, selectedIndex: null, selectedObject: null, ...extra
+    query: queryText, result: null, error: '', meta: 'No query executed', view: 'table', viewPinned: false, selected: [], selectedObject: null, ...extra
   });
   const [initialTab] = useState(() => makeTab(null, engines.mysql.query));
   const [tabs, setTabs] = useState([initialTab]);
@@ -23,7 +23,7 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
   const setError = value => patchTab({ error: value });
   // A manual choice sticks to the tab; until then the view follows the shape of each result.
   const setView = value => patchTab({ view: value, viewPinned: true });
-  const setSelectedIndex = value => patchTab({ selectedIndex: value });
+  const setSelected = value => patchTab({ selected: value });
 
   // Every connection always has at least one tab.
   useEffect(() => {
@@ -44,14 +44,14 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
 
   function closeTab(id) {
     const mine = tabs.filter(t => t.connId === activeId);
-    if (mine.length <= 1) { patchTab({ query: active ? engines[active.type].query : '', result: null, error: '', meta: 'No query executed', selectedIndex: null, selectedObject: null }, id); return; }
+    if (mine.length <= 1) { patchTab({ query: active ? engines[active.type].query : '', result: null, error: '', meta: 'No query executed', selected: [], selectedObject: null }, id); return; }
     const index = mine.findIndex(t => t.id === id);
     setTabs(all => all.filter(t => t.id !== id));
     if (id === tab.id) setActiveTabId((mine[index + 1] ?? mine[index - 1]).id);
   }
 
   const removeConnectionTabs = connId => setTabs(all => all.filter(t => t.connId !== connId));
-  const resetConnectionTabs = (connId, type) => setTabs(all => all.map(t => t.connId === connId ? { ...t, query: engines[type].query, result: null, error: '', selectedIndex: null } : t));
+  const resetConnectionTabs = (connId, type) => setTabs(all => all.map(t => t.connId === connId ? { ...t, query: engines[type].query, result: null, error: '', selected: [] } : t));
 
   async function runQuery(statement = tab.query, tabId = tab.id) {
     if (!active || !isConnected || !statement.trim()) return false;
@@ -65,13 +65,13 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
       return false;
     }
     const data = { ...res.result, elapsedMs: Math.round(performance.now() - started) };
-    setTabs(all => all.map(t => t.id === tabId ? { ...t, result: data, meta: `${data.message || 'Completed'} · ${data.elapsedMs} ms`, selectedIndex: null, view: t.viewPinned ? t.view : autoView(data) } : t));
+    setTabs(all => all.map(t => t.id === tabId ? { ...t, result: data, meta: `${data.message || 'Completed'} · ${data.elapsedMs} ms`, selected: [], view: t.viewPinned ? t.view : autoView(data) } : t));
     setStatus('Query completed');
     return true;
   }
 
   return {
-    tab, connTabs, setActiveTabId, patchTab, setQuery, setError, setView, setSelectedIndex,
+    tab, connTabs, setActiveTabId, patchTab, setQuery, setError, setView, setSelected,
     addTab, closeTab, removeConnectionTabs, resetConnectionTabs, runQuery
   };
 }
