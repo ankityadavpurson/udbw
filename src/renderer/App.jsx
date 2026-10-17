@@ -7,6 +7,7 @@ import useQueryTabs from './hooks/useQueryTabs.js';
 import useRecordEditor from './hooks/useRecordEditor.js';
 import useConnectionDialog from './hooks/useConnectionDialog.js';
 import { selectStatement } from './lib/statements.js';
+import { languageFor } from './lib/tokenize.js';
 import { copyToClipboard, downloadCsv, downloadJson } from './lib/exporters.js';
 import AppSidebar from './components/sidebar/AppSidebar.jsx';
 import ObjectBrowser from './components/sidebar/ObjectBrowser.jsx';
@@ -121,7 +122,7 @@ export default function App() {
             <ConnectionToolbar active={active} engine={conn.engine} status={active ? conn.connectionStatus(active.id) : undefined} isConnected={isConnected} busy={busy}
               showMenuButton={!isMd} onOpenMenu={() => setDrawerOpen(true)} onConnect={connect} onDisconnect={disconnect} onRun={() => tabsApi.runQuery()} menuItems={connectionMenu} />
             <QueryTabs tabs={tabsApi.connTabs} activeTabId={tab.id} canAdd={Boolean(active)} onSelect={tabsApi.setActiveTabId} onClose={tabsApi.closeTab} onAdd={() => tabsApi.addTab()} />
-            <QueryEditor value={tab.query} onRun={() => tabsApi.runQuery()}
+            <QueryEditor language={languageFor(active)} value={tab.query} onRun={() => tabsApi.runQuery()}
               onChange={value => { tabsApi.setQuery(value); if (activeId) conn.setLastQuery(activeId, value); }} />
             <ResultsPanel tab={tab} status={status} records={records} isConnected={isConnected} busy={busy}
               onViewChange={tabsApi.setView} onSelect={tabsApi.setSelected} onRerun={() => tabsApi.runQuery()} onCopyRows={copyText}

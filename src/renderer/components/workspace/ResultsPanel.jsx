@@ -51,7 +51,7 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
           <Button variant="secondary" disabled={!hasSelection} onClick={() => onCopyRows(selectedCount === 1 ? selectedJson : selectedDocs)}><CopyIcon /> {selectedCount > 1 ? 'Copy rows' : 'Copy row'}</Button>
           <Button variant="flat" disabled={!isConnected || busy} tooltip="Re-run query" onClick={onRerun}><RefreshIcon /></Button>
         </Flex>
-        <DataGrid columns={columns} rows={rows} rowKey="__i" selectable pageSize={50} pageSizeOptions={[25, 50, 100]}
+        <DataGrid columns={columns} rows={rows} rowKey="__i" selectable pageSize={10} pageSizeOptions={[10, 25, 50, 100]} hideFooterWhenSinglePage
           selected={selected} onSelectionChange={onSelect}
           empty="No rows returned." caption="Query results"
           className="compact-grid !gap-2 [&_div.overflow-x-auto]:!border-x-0 [&>div:last-child]:px-2" />
