@@ -5,9 +5,11 @@ const net = require('net');
 const { Client: SSHClient } = require('ssh2');
 const mysql = require('mysql2/promise');
 const { Client } = require('pg');
-const { MongoClient, ObjectId } = require('mongodb');
+const { MongoClient, ObjectId, BSON } = require('mongodb');
 const { createClient } = require('@supabase/supabase-js');
 const admin = require('firebase-admin');
+
+const { EJSON } = BSON;
 
 let mainWindow;
 // Custom title bar: the native one is hidden and Electron draws only the window buttons, in these colours.
@@ -103,11 +105,15 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', async () => {
-  for (const [id, session] of sessions) {
-    try { await closeSession(session); } catch (_) {}
-    sessions.delete(id);
-  }
+// Quit is held back (once) until sessions and SSH tunnels are closed, with a cap so a hung server cannot block exit.
+let quitting = false;
+app.on('before-quit', event => {
+  if (quitting) return;
+  quitting = true;
+  event.preventDefault();
+  const closing = [...sessions.values()].map(session => closeSession(session).catch(() => {}));
+  sessions.clear();
+  Promise.race([Promise.all(closing), new Promise(resolve => setTimeout(resolve, 3000))]).finally(() => app.quit());
 });
 
 app.on('window-all-closed', () => {
@@ -119,7 +125,9 @@ function safeError(err) {
   const code = ['string', 'number'].includes(typeof err?.code) ? err.code : null;
   return { message, code };
 }
-function isTransportError(err) {
+// Firestore (gRPC) reports numeric codes: 4 DEADLINE_EXCEEDED, 14 UNAVAILABLE.
+function isTransportError(err, type) {
+  if (type === 'firestore' && (err?.code === 4 || err?.code === 14)) return true;
   return ['ECONNRESET','ECONNREFUSED','ETIMEDOUT','EPIPE','57P01','08006','08001'].includes(err?.code) || /connection terminated unexpectedly|server closed the connection|connection lost|socket hang up/i.test(err?.message || '');
 }
 
@@ -140,15 +148,60 @@ async function closeSession(s) {
 function closeTunnel(tunnel) {
   if (!tunnel) return Promise.resolve();
   return new Promise(resolve => {
+    for (const socket of tunnel.sockets || []) socket.destroy();
     try { tunnel.server.close(() => { try { tunnel.client.end(); } catch (_) {} resolve(); }); }
     catch (_) { try { tunnel.client.end(); } catch (_) {} resolve(); }
   });
 }
 
+// Trust-on-first-use host keys: the first fingerprint seen for host:port is stored after the user confirms it,
+// and a different key later is refused.
+const knownHostsPath = () => path.join(app.getPath('userData'), 'known_hosts.json');
+function readKnownHosts() {
+  try { return JSON.parse(fs.readFileSync(knownHostsPath(), 'utf8')) || {}; } catch (_) { return {}; }
+}
+function writeKnownHosts(hosts) {
+  const file = knownHostsPath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify(hosts, null, 2), { mode: 0o600 });
+  fs.renameSync(`${file}.tmp`, file);
+}
+const fingerprintOf = hex => `SHA256:${Buffer.from(hex, 'hex').toString('base64').replace(/=+$/, '')}`;
+
+// Resolves { ok: true } or { ok: false, message }.
+async function verifyHostKey(host, port, hex) {
+  const id = `${host}:${port}`;
+  const fingerprint = fingerprintOf(hex);
+  const hosts = readKnownHosts();
+  if (hosts[id]) {
+    if (hosts[id] === fingerprint) return { ok: true };
+    return { ok: false, message: `The SSH host key for ${id} has changed (expected ${hosts[id]}, got ${fingerprint}). This could be a man-in-the-middle attack. If the server was reinstalled, remove the "${id}" entry from ${knownHostsPath()} and try again.` };
+  }
+  const choice = await dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined, {
+    type: 'question', buttons: ['Trust and continue', 'Cancel'], defaultId: 1, cancelId: 1, noLink: true,
+    title: 'Unknown SSH host', message: `The authenticity of ${id} cannot be established.`,
+    detail: `Key fingerprint: ${fingerprint}\n\nOnly continue if you recognise this fingerprint. It will be remembered and checked on future connections.`
+  });
+  if (choice.response !== 0) return { ok: false, message: `SSH host key for ${id} was not trusted.` };
+  writeKnownHosts({ ...hosts, [id]: fingerprint });
+  return { ok: true };
+}
+
 async function createSshTunnel(profile, remoteHost, remotePort) {
   if (!profile.sshHost || !profile.sshUsername) throw new Error('Enter an SSH host and username.');
   const client = new SSHClient();
-  const options = { host: profile.sshHost, port: Number(profile.sshPort || 22), username: profile.sshUsername, readyTimeout: 12000 };
+  const sshPort = Number(profile.sshPort || 22);
+  let hostProblem = '';
+  const options = {
+    host: profile.sshHost, port: sshPort, username: profile.sshUsername, readyTimeout: 12000,
+    keepaliveInterval: 15000, keepaliveCountMax: 3, hostHash: 'sha256',
+    hostVerifier: (hash, callback) => {
+      verifyHostKey(profile.sshHost, sshPort, hash).then(
+        result => { if (!result.ok) hostProblem = result.message; callback(result.ok); },
+        err => { hostProblem = `Could not verify the SSH host key: ${err.message}`; callback(false); }
+      );
+    }
+  };
   if (profile.sshAuthMethod === 'privateKey') {
     if (!profile.sshKeyPath) throw new Error('Choose an SSH private key file.');
     options.privateKey = fs.readFileSync(profile.sshKeyPath);
@@ -157,21 +210,44 @@ async function createSshTunnel(profile, remoteHost, remotePort) {
     if (!profile.sshPassword) throw new Error('Enter the SSH password.');
     options.password = profile.sshPassword;
   }
+  // A permanent 'error' listener: without one, an SSH error after the handshake would crash the main process.
+  client.on('error', err => console.error('[ssh] connection error', err.message));
   await new Promise((resolve, reject) => {
-    client.once('ready', resolve);
-    client.once('error', reject);
+    const fail = err => reject(hostProblem ? new Error(hostProblem) : err);
+    client.once('error', fail);
+    client.once('ready', () => { client.removeListener('error', fail); resolve(); });
     client.connect(options);
   });
+  const sockets = new Set();
   const server = net.createServer(socket => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+    socket.on('error', () => {});
     client.forwardOut('127.0.0.1', socket.remotePort || 0, remoteHost, Number(remotePort), (err, stream) => {
-      if (err) { socket.destroy(err); return; }
+      if (err || socket.destroyed) { if (stream) stream.destroy(); socket.destroy(); return; }
+      stream.on('error', () => socket.destroy());
+      stream.on('close', () => socket.destroy());
+      socket.on('close', () => stream.destroy());
       socket.pipe(stream).pipe(socket);
     });
   });
+  // When the SSH link drops, cut the forwarded sockets so the database driver sees the failure and the UI offers to reconnect.
+  client.once('close', () => { for (const socket of sockets) socket.destroy(); try { server.close(); } catch (_) {} });
   try {
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   } catch (err) { client.end(); throw err; }
-  return { client, server, port: server.address().port, remoteHost, remotePort: Number(remotePort) };
+  return { client, server, sockets, port: server.address().port, remoteHost, remotePort: Number(remotePort) };
+}
+
+// When the form's TLS options are on they decide verification, so drop `sslmode=` from the string: pg would otherwise
+// let it override them (sslmode=require acts as verify-full and rejects Supabase's own CA).
+function pgConnectionString(profile) {
+  if (!profile.ssl) return profile.connectionString;
+  try {
+    const url = new URL(profile.connectionString);
+    url.searchParams.delete('sslmode'); url.searchParams.delete('uselibpqcompat');
+    return url.toString();
+  } catch (_) { return profile.connectionString; }
 }
 
 async function connectProfile(profile) {
@@ -197,7 +273,15 @@ async function connectProfile(profile) {
       if (profile.connectionString) { uri.hostname = '127.0.0.1'; uri.port = String(tunnel.port); profile.connectionString = uri.toString(); }
       else { profile.host = '127.0.0.1'; profile.port = tunnel.port; }
     } else if (profile.type === 'mongodb') {
-      const mongoUrl = new URL(profile.uri); mongoUrl.protocol = 'mongodb:'; mongoUrl.hostname = '127.0.0.1'; mongoUrl.port = String(tunnel.port); mongoUrl.searchParams.set('tls', 'true'); mongoUrl.searchParams.set('servername', remoteHost); profile.uri = mongoUrl.toString();
+      // Keep the server's own TLS choice: SRV URIs and tls=/ssl=true use TLS, plain mongodb:// URIs don't unless asked.
+      const mongoUrl = new URL(profile.uri);
+      const tlsParam = mongoUrl.searchParams.get('tls') ?? mongoUrl.searchParams.get('ssl');
+      const useTls = tlsParam != null ? tlsParam === 'true' : (mongoUrl.protocol === 'mongodb+srv:' || Boolean(profile.ssl));
+      mongoUrl.protocol = 'mongodb:'; mongoUrl.hostname = '127.0.0.1'; mongoUrl.port = String(tunnel.port);
+      mongoUrl.searchParams.delete('ssl'); mongoUrl.searchParams.set('tls', String(useTls));
+      mongoUrl.searchParams.set('directConnection', 'true');   // replica-set members are not reachable through the tunnel
+      if (useTls) mongoUrl.searchParams.set('servername', remoteHost);
+      profile.uri = mongoUrl.toString();
       if (!profile.database) profile.database = decodeURIComponent(mongoUrl.pathname.replace(/^\//, ''));
     }
   }
@@ -213,7 +297,7 @@ async function connectProfile(profile) {
     await client.query('SELECT 1');
   } else if (profile.type === 'postgres') {
     const client = new Client(profile.connectionString ? {
-      connectionString: profile.connectionString,
+      connectionString: pgConnectionString(profile),
       connectionTimeoutMillis: 10000,
       ssl: profile.ssl ? { rejectUnauthorized: !profile.sslAllowUntrusted, servername: tunnel?.remoteHost } : undefined
     } : {
@@ -229,7 +313,7 @@ async function connectProfile(profile) {
   } else if (profile.type === 'supabase') {
     if (profile.connectionString) {
       const pgClient = new Client({
-        connectionString: profile.connectionString,
+        connectionString: pgConnectionString(profile),
         connectionTimeoutMillis: 10000,
         ssl: profile.ssl ? { rejectUnauthorized: !profile.sslAllowUntrusted, servername: tunnel?.remoteHost } : { rejectUnauthorized: true }
       });
@@ -295,15 +379,32 @@ ipcMain.handle('db:pick-ssh-key', async () => {
   return result.canceled ? null : result.filePaths[0] || null;
 });
 
+// Copy kept of a store file that could not be read (one copy per run), so saving a new profile afterwards can
+// never destroy saved connections that merely failed to decrypt.
+let unreadableStoreBackup = null;
+
 ipcMain.handle('connections:load', async () => {
+  const file = connectionStorePath();
   try {
-    const file = connectionStorePath();
     if (!fs.existsSync(file)) return { ok: true, profiles: [] };
     if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage is unavailable on this device.');
     const encrypted = fs.readFileSync(file, 'utf8');
     const saved = JSON.parse(safeStorage.decryptString(Buffer.from(encrypted, 'base64')));
-    return { ok: true, profiles: Array.isArray(saved) ? saved : (saved.profiles || []), activeId: Array.isArray(saved) ? null : (saved.activeId || null) };
-  } catch (err) { return { ok: false, profiles: [], error: safeError(err) }; }
+    unreadableStoreBackup = null;
+    return { ok: true, profiles: Array.isArray(saved) ? saved : (saved.profiles || []), activeId: Array.isArray(saved) ? null : (saved.activeId || null), lastQueries: saved.lastQueries || {} };
+  } catch (err) {
+    let backup = unreadableStoreBackup;
+    try {
+      if (!backup && fs.existsSync(file)) {
+        backup = `${file}.unreadable-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+        fs.copyFileSync(file, backup);
+        unreadableStoreBackup = backup;
+      }
+    } catch (_) { backup = null; }
+    const error = safeError(err);
+    if (backup) error.message = `${error.message} A copy of the saved file was kept at ${backup}.`;
+    return { ok: false, profiles: [], error };
+  }
 });
 
 ipcMain.handle('connections:save', async (_event, profiles) => {
@@ -334,7 +435,7 @@ ipcMain.handle('db:discover', async (_event, { id, database, schema }) => {
   if (!session) return { ok: false, error: { message: 'Not connected.' } };
   try { return { ok: true, result: await discoverObjects(session, database, schema) }; }
   catch (err) {
-    if (isTransportError(err)) { try { await closeSession(session); } catch (_) {} sessions.delete(id); }
+    if (isTransportError(err, session.type)) { try { await closeSession(session); } catch (_) {} sessions.delete(id); }
     return { ok: false, error: safeError(err) };
   }
 });
@@ -461,22 +562,23 @@ ipcMain.handle('db:query', async (_event, { id, query, options = {} }) => {
       }
       if (parsed.action === 'insert') {
         const inserted = await db.collection(parsed.collection).insertOne(parsed.document);
-        const doc = { ...parsed.document, _id: inserted.insertedId.toString() };
+        const doc = mongoPlain({ ...parsed.document, _id: inserted.insertedId });
         return { ok: true, result: { json: [doc], columns: ['_id', 'document'], rows: [[doc._id, JSON.stringify(doc)]], rowCount: 1, message: 'Inserted 1 document' } };
       }
       if (parsed.action === 'update') {
-        const filter = { _id: parseMongoId(parsed.id) };
+        const filter = mongoIdFilter(parsed.id);
         const update = Object.keys(parsed.document).some(key => key.startsWith('$')) ? parsed.document : { $set: parsed.document };
         const updated = await db.collection(parsed.collection).updateOne(filter, update);
         const docs = await db.collection(parsed.collection).find(filter).limit(1).toArray();
-        return { ok: true, result: { json: docs.map(d => JSON.parse(JSON.stringify(d))), columns: ['_id', 'document'], rows: docs.map(d => [String(d._id), JSON.stringify(d)]), rowCount: updated.modifiedCount, message: `Updated ${updated.modifiedCount} document(s)` } };
+        const plain = docs.map(mongoPlain);
+        return { ok: true, result: { json: plain, columns: ['_id', 'document'], rows: plain.map(d => [String(d._id), JSON.stringify(d)]), rowCount: updated.modifiedCount, message: `Updated ${updated.modifiedCount} document(s)` } };
       }
       if (parsed.action === 'delete') {
-        const deleted = await db.collection(parsed.collection).deleteOne({ _id: parseMongoId(parsed.id) });
+        const deleted = await db.collection(parsed.collection).deleteOne(mongoIdFilter(parsed.id));
         return { ok: true, result: { json: [], columns: [], rows: [], rowCount: deleted.deletedCount, message: `Deleted ${deleted.deletedCount} document(s)` } };
       }
       const docs = await db.collection(parsed.collection).find(parsed.filter).limit(parsed.limit).toArray();
-      const safeDocs = JSON.parse(JSON.stringify(docs));
+      const safeDocs = docs.map(mongoPlain);
       return { ok: true, result: { json: safeDocs, columns: ['_id', 'document'], rows: safeDocs.map(d => [String(d._id ?? ''), JSON.stringify(d)]), message: `${docs.length} documents` } };
     }
     if (s.type === 'firestore') {
@@ -486,14 +588,14 @@ ipcMain.handle('db:query', async (_event, { id, query, options = {} }) => {
         return { ok: true, result: { json: collections.map(c => ({ name: c.id })), columns: ['name'], rows: collections.map(c => [c.id]), message: `${collections.length} top-level collections` } };
       }
       if (parsed.action === 'create') {
-        await s.db.collection(parsed.collection).doc(parsed.id).set(parsed.document);
+        await s.db.collection(parsed.collection).doc(parsed.id).set(firestoreDecode(parsed.document, s.db));
         const doc = { id: parsed.id, ...parsed.document };
         return { ok: true, result: { json: [doc], columns: ['id', 'document'], rows: [[doc.id, JSON.stringify(doc)]], rowCount: 1, message: 'Created 1 document' } };
       }
       if (parsed.action === 'update') {
-        await s.db.collection(parsed.collection).doc(parsed.id).set(parsed.document, { merge: true });
+        await s.db.collection(parsed.collection).doc(parsed.id).set(firestoreDecode(parsed.document, s.db), { merge: true });
         const snap = await s.db.collection(parsed.collection).doc(parsed.id).get();
-        const doc = { id: snap.id, ...snap.data() };
+        const doc = { id: snap.id, ...firestoreEncode(snap.data()) };
         return { ok: true, result: { json: [doc], columns: ['id', 'document'], rows: [[doc.id, JSON.stringify(doc)]], rowCount: 1, message: 'Updated 1 document' } };
       }
       if (parsed.action === 'delete') {
@@ -501,12 +603,12 @@ ipcMain.handle('db:query', async (_event, { id, query, options = {} }) => {
         return { ok: true, result: { json: [], columns: [], rows: [], rowCount: 1, message: 'Deleted document' } };
       }
       const snap = await s.db.collection(parsed.collection).limit(parsed.limit).get();
-      const docs = snap.docs.map(d => JSON.parse(JSON.stringify({ id: d.id, ...d.data() })));
+      const docs = snap.docs.map(d => ({ id: d.id, ...firestoreEncode(d.data()) }));
       return { ok: true, result: { json: docs, columns: ['id', 'document'], rows: docs.map(d => [String(d.id), JSON.stringify(d)]), message: `${docs.length} documents` } };
     }
     throw new Error('This connector does not support this operation.');
   } catch (err) {
-    if (isTransportError(err)) { try { await closeSession(s); } catch (_) {} sessions.delete(id); }
+    if (isTransportError(err, s.type)) { try { await closeSession(s); } catch (_) {} sessions.delete(id); }
     return { ok: false, error: safeError(err) };
   }
 });
@@ -521,7 +623,8 @@ function normalizePgResult(result) {
   return { columns, rows: (result.rows || []).map(r => columns.map(c => serializeValue(r[c]))), json: (result.rows || []).map(r => Object.fromEntries(Object.entries(r).map(([k,v]) => [k, serializeValue(v)]))), rowCount: result.rowCount, message: result.command ? `${result.command}${result.rowCount == null ? '' : ` · ${result.rowCount} row(s)`}` : 'Query completed' };
 }
 function serializeValue(v) {
-  if (v === null || v === undefined) return v === null ? 'NULL' : '';
+  // Real nulls stay null so edits never write the text "NULL"; the UI draws them as NULL.
+  if (v === null || v === undefined) return v === null ? null : '';
   if (Buffer.isBuffer(v)) return `base64:${v.toString('base64')}`;
   if (v instanceof Date) return v.toISOString();
   if (typeof v === 'object') return JSON.stringify(v);
@@ -530,7 +633,7 @@ function serializeValue(v) {
 function inferColumns(data) { return data?.length ? Object.keys(data[0]) : []; }
 function parseRestCommand(query) {
   const write = query.trim().match(/^(INSERT|UPDATE|DELETE)\s+([a-zA-Z0-9_.-]+)(?:\s+([a-zA-Z0-9_.-]+)=([^\s]+))?\s*(\{.*\})?$/is);
-  if (write) return { action:write[1].toLowerCase(), table:write[2], idField:write[3], id:write[4], document:write[5] ? JSON.parse(write[5]) : undefined };
+  if (write) return { action:write[1].toLowerCase(), table:write[2], idField:write[3], id:write[4] === undefined ? undefined : decodeId(write[4]), document:write[5] ? JSON.parse(write[5]) : undefined };
   // REST reads: REST: table_name [LIMIT n]
   const m = query.trim().match(/^REST:\s*([a-zA-Z0-9_.-]+)(?:\s+LIMIT\s+(\d+))?$/i);
   if (!m) throw new Error('Supabase REST mode accepts: REST: table_name [LIMIT 100]');
@@ -539,29 +642,78 @@ function parseRestCommand(query) {
 function parseMongoCommand(query) {
   if (/^collections\s*;?$/i.test(query.trim())) return { action: 'collections' };
   let m = query.trim().match(/^insert\s+([a-zA-Z0-9_.-]+)\s+(\{.*\})$/is);
-  if (m) return { action:'insert', collection:m[1], document:JSON.parse(m[2]) };
+  if (m) return { action:'insert', collection:m[1], document:EJSON.parse(m[2], { relaxed: true }) };
   m = query.trim().match(/^update\s+([a-zA-Z0-9_.-]+)\s+(\S+)\s+(\{.*\})$/is);
-  if (m) return { action:'update', collection:m[1], id:m[2], document:JSON.parse(m[3]) };
+  if (m) return { action:'update', collection:m[1], id:decodeId(m[2]), document:EJSON.parse(m[3], { relaxed: true }) };
   m = query.trim().match(/^delete\s+([a-zA-Z0-9_.-]+)\s+(\S+)$/i);
-  if (m) return { action:'delete', collection:m[1], id:m[2] };
+  if (m) return { action:'delete', collection:m[1], id:decodeId(m[2]) };
   // find collection_name {"field":"value"} LIMIT 100
   m = query.trim().match(/^find\s+([a-zA-Z0-9_.-]+)(?:\s+(\{.*\}))?(?:\s+LIMIT\s+(\d+))?$/is);
   if (!m) throw new Error('MongoDB commands: "collections" or \'find collection_name {"status":"active"} LIMIT 100\'');
   let filter = {};
-  if (m[2]) filter = JSON.parse(m[2]);
+  if (m[2]) filter = EJSON.parse(m[2], { relaxed: true });
+  if (typeof filter._id === 'string') filter = { ...filter, ...mongoIdFilter(filter._id) };   // a plain id string also matches an ObjectId
   return { action: 'find', collection: m[1], filter, limit: Math.min(Number(m[3] || 100), 1000) };
 }
 function parseFirestoreCommand(query) {
   if (/^collections\s*;?$/i.test(query.trim())) return { action: 'collections' };
   let m = query.trim().match(/^(create|update)\s+([a-zA-Z0-9_.-]+)\s+(\S+)\s+(\{.*\})$/is);
-  if (m) return { action:m[1].toLowerCase(), collection:m[2], id:m[3], document:JSON.parse(m[4]) };
+  if (m) return { action:m[1].toLowerCase(), collection:m[2], id:decodeId(m[3]), document:JSON.parse(m[4]) };
   m = query.trim().match(/^delete\s+([a-zA-Z0-9_.-]+)\s+(\S+)$/i);
-  if (m) return { action:'delete', collection:m[1], id:m[2] };
+  if (m) return { action:'delete', collection:m[1], id:decodeId(m[2]) };
   // read collection_name LIMIT 100
   m = query.trim().match(/^read\s+([a-zA-Z0-9_.-]+)(?:\s+LIMIT\s+(\d+))?$/i);
   if (!m) throw new Error('Firestore commands: "collections" or "read collection_name LIMIT 100"');
   return { action: 'read', collection: m[1], limit: Math.min(Number(m[2] || 100), 1000) };
 }
-function parseMongoId(value) {
-  return /^[a-f\d]{24}$/i.test(String(value)) ? new ObjectId(String(value)) : value;
+// Ids inside text commands are percent-encoded by the UI so spaces and symbols survive; typed plain ids work too.
+function decodeId(value) {
+  try { return decodeURIComponent(value); } catch (_) { return value; }
+}
+
+// Matches a document by _id whatever its stored type: ObjectId, string or number.
+function mongoIdFilter(value) {
+  const text = String(value);
+  if (/^[a-f\d]{24}$/i.test(text)) return { _id: { $in: [new ObjectId(text), text] } };
+  if (/^-?\d+(\.\d+)?$/.test(text)) return { _id: { $in: [text, Number(text)] } };
+  return { _id: text };
+}
+
+// Documents are shown as relaxed Extended JSON ({"$oid": …}, {"$date": …}) so editing and cloning keep BSON types;
+// the top-level _id stays a plain string because it identifies the row.
+function mongoPlain(doc) {
+  const plain = JSON.parse(EJSON.stringify(doc, { relaxed: true }));
+  if (doc && doc._id !== undefined && (doc._id instanceof ObjectId || typeof doc._id !== 'object')) plain._id = String(doc._id);
+  return plain;
+}
+
+// Firestore types that JSON cannot carry are shown as { __type, … } objects and turned back into real values on write.
+function firestoreEncode(value) {
+  const FS = admin.firestore;
+  if (value === null || typeof value !== 'object') return value;
+  if (value instanceof FS.Timestamp) {
+    const iso = new Date(value.seconds * 1000).toISOString().replace('.000Z', `.${String(value.nanoseconds).padStart(9, '0')}Z`);
+    return { __type: 'timestamp', value: iso };
+  }
+  if (value instanceof Date) return { __type: 'timestamp', value: value.toISOString() };
+  if (value instanceof FS.GeoPoint) return { __type: 'geopoint', latitude: value.latitude, longitude: value.longitude };
+  if (value instanceof FS.DocumentReference) return { __type: 'reference', path: value.path };
+  if (Buffer.isBuffer(value) || value instanceof Uint8Array) return { __type: 'bytes', base64: Buffer.from(value).toString('base64') };
+  if (Array.isArray(value)) return value.map(firestoreEncode);
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, firestoreEncode(item)]));
+}
+function firestoreDecode(value, db) {
+  const FS = admin.firestore;
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(item => firestoreDecode(item, db));
+  if (value.__type === 'timestamp' && typeof value.value === 'string') {
+    const match = /^(.*?)(?:\.(\d{1,9}))?Z$/.exec(value.value);
+    const ms = match ? Date.parse(`${match[1]}Z`) : NaN;
+    if (Number.isNaN(ms)) throw new Error(`Invalid timestamp "${value.value}". Use an ISO 8601 UTC value such as 2024-01-31T12:00:00Z.`);
+    return new FS.Timestamp(Math.floor(ms / 1000), Number((match[2] || '').padEnd(9, '0')));
+  }
+  if (value.__type === 'geopoint') return new FS.GeoPoint(Number(value.latitude), Number(value.longitude));
+  if (value.__type === 'reference' && typeof value.path === 'string') return db.doc(value.path);
+  if (value.__type === 'bytes' && typeof value.base64 === 'string') return Buffer.from(value.base64, 'base64');
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, firestoreDecode(item, db)]));
 }

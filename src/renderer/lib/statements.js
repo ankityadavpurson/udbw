@@ -1,4 +1,6 @@
 const isRestSupabase = active => active?.type === 'supabase' && !active.connectionString;
+// Ids travel inside a one-line text command, so they are percent-encoded (the main process decodes them).
+const encodeId = id => encodeURIComponent(String(id));
 
 // SELECT-style statement used when an object is opened from the sidebar.
 export function selectStatement(active, object) {
@@ -25,25 +27,32 @@ export function canEditRecord(active, selectedObject, selectedJson) {
 
 // Builds the command for an insert / edit / delete. Returns { statement } or { error }.
 export function buildRecordStatement({ active, object, action, record, selectedJson }) {
-  const docId = selectedJson?.id ?? selectedJson?._id ?? record.id ?? record._id;
-  if (action !== 'insert' && !docId) return { error: 'The selected record does not include an identifier needed for this operation.' };
+  const restKey = object.primaryKey?.[0] || 'id';
+  const docId = isRestSupabase(active)
+    ? (selectedJson?.[restKey] ?? record[restKey])
+    : (selectedJson?.id ?? selectedJson?._id ?? record.id ?? record._id);
+  if (action !== 'insert' && (docId === undefined || docId === null || docId === '')) return { error: 'The selected record does not include an identifier needed for this operation.' };
 
   if (active.type === 'mongodb') {
     const collection = object.name;
     if (action === 'insert') return { statement: `insert ${collection} ${JSON.stringify(record)}` };
-    if (action === 'edit') { const { _id, ...changes } = record; return { statement: `update ${collection} ${docId} ${JSON.stringify(changes)}` }; }
-    return { statement: `delete ${collection} ${docId}` };
+    if (action === 'edit') { const { _id, ...changes } = record; return { statement: `update ${collection} ${encodeId(docId)} ${JSON.stringify(changes)}` }; }
+    return { statement: `delete ${collection} ${encodeId(docId)}` };
   }
   if (active.type === 'firestore') {
     const collection = object.name;
-    if (action === 'insert') { const { id, ...data } = record; return { statement: `create ${collection} ${id || crypto.randomUUID()} ${JSON.stringify(data)}` }; }
-    if (action === 'edit') { const { id, ...changes } = record; return { statement: `update ${collection} ${docId} ${JSON.stringify(changes)}` }; }
-    return { statement: `delete ${collection} ${docId}` };
+    if (action === 'insert') { const { id, ...data } = record; return { statement: `create ${collection} ${encodeId(id || crypto.randomUUID())} ${JSON.stringify(data)}` }; }
+    if (action === 'edit') { const { id, ...changes } = record; return { statement: `update ${collection} ${encodeId(docId)} ${JSON.stringify(changes)}` }; }
+    return { statement: `delete ${collection} ${encodeId(docId)}` };
   }
   if (isRestSupabase(active)) {
     if (action === 'insert') return { statement: `INSERT ${object.name} ${JSON.stringify(record)}` };
-    if (action === 'edit') { const { id, ...changes } = record; return { statement: `UPDATE ${object.name} id=${docId} ${JSON.stringify(changes)}` }; }
-    return { statement: `DELETE ${object.name} id=${docId}` };
+    if (action === 'edit') {
+      const changes = Object.fromEntries(Object.entries(record).filter(([key, value]) => key !== restKey && JSON.stringify(value) !== JSON.stringify(selectedJson?.[key])));
+      if (!Object.keys(changes).length) return { error: 'Change at least one field before saving.' };
+      return { statement: `UPDATE ${object.name} ${restKey}=${encodeId(docId)} ${JSON.stringify(changes)}` };
+    }
+    return { statement: `DELETE ${object.name} ${restKey}=${encodeId(docId)}` };
   }
 
   const quote = active.type === 'mysql' ? value => `\`${String(value).replace(/`/g, '``')}\`` : value => `"${String(value).replace(/"/g, '""')}"`;
@@ -55,9 +64,11 @@ export function buildRecordStatement({ active, object, action, record, selectedJ
     return { statement: `INSERT INTO ${table} (${entries.map(([key]) => quote(key)).join(', ')}) VALUES (${entries.map(([, value]) => sqlLiteral(value)).join(', ')});` };
   }
   if (!keys.length || keys.some(key => selectedJson?.[key] === undefined)) return { error: 'This table has no visible primary key, so a record cannot be updated or deleted safely.' };
-  const where = keys.map(key => `${quote(key)} = ${sqlLiteral(selectedJson[key])}`).join(' AND ');
+  const where = keys.map(key => selectedJson[key] === null ? `${quote(key)} IS NULL` : `${quote(key)} = ${sqlLiteral(selectedJson[key])}`).join(' AND ');
   if (action === 'edit') {
-    const entries = Object.entries(record).filter(([key]) => !keys.includes(key));
+    // Only fields the user actually changed are written, so untouched values (dates, binary, JSON text) are never rewritten.
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const entries = Object.entries(record).filter(([key, value]) => !keys.includes(key) && !same(value, selectedJson[key]));
     if (!entries.length) return { error: 'Change at least one non-key field before saving.' };
     return { statement: `UPDATE ${table} SET ${entries.map(([key, value]) => `${quote(key)} = ${sqlLiteral(value)}`).join(', ')} WHERE ${where};` };
   }
@@ -66,6 +77,10 @@ export function buildRecordStatement({ active, object, action, record, selectedJ
 
 // A typed `find <collection>` / `read <collection>` still tells us which collection is being edited.
 export function inferObject(active, query) {
+  if (isRestSupabase(active)) {
+    const rest = /^\s*REST:\s*([A-Za-z0-9_.-]+)/i.exec(query || '');
+    return rest ? { name: rest[1], type: 'table' } : null;
+  }
   if (active?.type !== 'mongodb' && active?.type !== 'firestore') return null;
   const match = /^\s*(?:find|read)\s+([A-Za-z0-9_.-]+)/i.exec(query || '');
   return match ? { name: match[1], type: 'collection' } : null;
@@ -88,8 +103,8 @@ export function buildDocumentUpdate({ active, object, doc, edited }) {
     const update = {};
     if (Object.keys(changed).length) update.$set = changed;
     if (removed.length) update.$unset = Object.fromEntries(removed.map(key => [key, '']));
-    return { statement: `update ${object.name} ${docId} ${JSON.stringify(update)}` };
+    return { statement: `update ${object.name} ${encodeId(docId)} ${JSON.stringify(update)}` };
   }
   if (removed.length) return { error: 'Removing fields is not supported for Firestore documents.' };
-  return { statement: `update ${object.name} ${docId} ${JSON.stringify(changed)}` };
+  return { statement: `update ${object.name} ${encodeId(docId)} ${JSON.stringify(changed)}` };
 }

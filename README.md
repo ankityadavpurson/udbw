@@ -62,7 +62,7 @@ Create a service account for a Firebase project and download its JSON key file. 
 - This is a starter, not a security-audited product.
 - Saved connection profiles (including passwords, API keys, and SSH secrets) are stored encrypted via `safeStorage`; if secure storage is unavailable, connections are not saved.
 - TLS certificates are verified when TLS/SSL is enabled. The "Allow untrusted/self-signed certificate" option disables verification; use it only for hosts you trust.
-- SSH host keys are **not** verified yet; add known-hosts checking before using tunnels on untrusted networks.
+- SSH host keys use trust-on-first-use: you confirm the fingerprint the first time, it is stored in `known_hosts.json` in the app data folder, and a changed key is refused.
 - Never commit service-account JSON, passwords, connection strings, or API keys.
 - SQL and document commands execute against the selected live database. Review commands before running them.
 - Supabase REST calls are subject to Row Level Security and the permissions of the API key.

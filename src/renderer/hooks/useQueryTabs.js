@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { engines, blankTab } from '../constants.js';
 import { autoView } from '../lib/results.js';
 
-const CONNECTION_LOST = /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|57P01|08006|08001|connection terminated|not connected|server closed the connection/i;
+const CONNECTION_LOST = /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|57P01|08006|08001|14 UNAVAILABLE|4 DEADLINE_EXCEEDED|connection terminated|not connected|server closed the connection/i;
 
 // Query tabs (one set per connection) and the query runner. Results always land in the tab that started the query.
 export default function useQueryTabs({ activeId, active, isConnected, loaded, lastQueries, setBusy, setStatus, onConnectionLost }) {

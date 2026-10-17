@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const CONNECTION_LOST = /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|57P01|08006|08001/i;
+const CONNECTION_LOST = /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|57P01|08006|08001|14 UNAVAILABLE|4 DEADLINE_EXCEEDED/i;
 
 // Database/schema selection and the object list shown in the sidebar.
 export default function useObjectTree({ active, activeId, markLost, updateProfile, setStatus }) {
