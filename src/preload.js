@@ -1,8 +1,14 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('workbench', {
+  loadConnections: () => ipcRenderer.invoke('connections:load'),
+  saveConnections: (profiles) => ipcRenderer.invoke('connections:save', profiles),
+  test: (profile) => ipcRenderer.invoke('db:test', { profile }),
+  discover: (payload) => ipcRenderer.invoke('db:discover', payload),
+  switchDatabase: (payload) => ipcRenderer.invoke('db:switch-database', payload),
   connect: (payload) => ipcRenderer.invoke('db:connect', payload),
   disconnect: (payload) => ipcRenderer.invoke('db:disconnect', payload),
   query: (payload) => ipcRenderer.invoke('db:query', payload),
-  pickServiceAccount: () => ipcRenderer.invoke('db:pick-service-account')
+  pickServiceAccount: () => ipcRenderer.invoke('db:pick-service-account'),
+  pickSshKey: () => ipcRenderer.invoke('db:pick-ssh-key')
 });
