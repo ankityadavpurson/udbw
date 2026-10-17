@@ -40,6 +40,8 @@ function zip(files) {
   return join([...chunks, directory, u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(directory.length), u32(offset), u16(0)]);
 }
 
+// Control characters other than tab / newline / carriage return are not allowed in XML, so they are dropped.
+// eslint-disable-next-line no-control-regex
 const escapeXml = text => text.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 // Column letters: 0 -> A, 25 -> Z, 26 -> AA.

@@ -1,5 +1,6 @@
 const { normalizePgResult, buildSqlMutation, mutationResult } = require('./sql');
 const { capSql, sqlIsWrite } = require('../sqlText');
+const { logger } = require('../logger');
 
 // When the form's TLS options are on they decide verification, so drop `sslmode=` from the string: pg would otherwise
 // let it override them (sslmode=require acts as verify-full and rejects Supabase's own CA).
@@ -20,7 +21,7 @@ async function openChecked(dial, tunnel, defaultSsl) {
     ? { connectionString: pgConnectionString(dial), connectionTimeoutMillis: 10000, ssl }
     : { host: dial.host, port: Number(dial.port || 5432), user: dial.username, password: dial.password, database: dial.database || 'postgres', connectionTimeoutMillis: 10000, ssl });
   // Without a listener a dropped connection would be an uncaught exception in the main process.
-  client.on('error', err => console.error('[pg] connection error', err.message));
+  client.on('error', err => logger.warn('[pg] connection error:', err.message));
   await client.connect();
   try {
     await client.query('SELECT 1');

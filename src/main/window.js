@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, screen, shell, dialog, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { logger, logFile } = require('./logger');
 
 // Custom title bar: the native one is hidden and Electron draws only the window buttons, in these colours.
 const TITLE_BAR = { height: 30, dark: { color: '#1f1f1f', symbolColor: '#ffffff' }, light: { color: '#ffffff', symbolColor: '#151515' } };
@@ -96,7 +97,10 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => { if (!splash) mainWindow.show(); });   // e.g. reopened from the dock
   mainWindow.webContents.on('did-fail-load', revealMainWindow);
   setTimeout(revealMainWindow, SPLASH_MAX_MS);
-  mainWindow.loadFile(path.join(root, 'dist', 'index.html'));
+  // `yarn dev` serves the UI from Vite (hot reload); a packaged app never honours that variable.
+  const devServer = app.isPackaged ? undefined : process.env.VITE_DEV_SERVER_URL;
+  if (devServer) mainWindow.loadURL(devServer);
+  else mainWindow.loadFile(path.join(root, 'dist', 'index.html'));
 }
 
 // The app never needs to open another window or leave its own page, so both are refused. Web links go to the browser.
@@ -108,6 +112,12 @@ function hardenWebContents() {
     });
     contents.on('will-navigate', event => event.preventDefault());
     contents.on('will-attach-webview', event => event.preventDefault());
+    contents.on('render-process-gone', async (_event, details) => {
+      logger.error('Renderer process gone:', details);
+      if (details.reason === 'clean-exit' || contents.isDestroyed()) return;
+      const choice = await dialog.showMessageBox(getMainWindow() || undefined, { type: 'error', buttons: ['Reload', 'Close'], defaultId: 0, cancelId: 1, title: 'The window stopped working', message: 'The window crashed.', detail: `Reason: ${details.reason}. Details were written to the log.` });
+      if (choice.response === 0 && !contents.isDestroyed()) contents.reload(); else app.quit();
+    });
   });
   // No camera, microphone, location etc.; copying text out of the results is the only permission the UI uses.
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === 'clipboard-sanitized-write'));
@@ -132,7 +142,12 @@ function buildAppMenu(theme = 'dark') {
       { label: 'Dark', type: 'radio', checked: theme === 'dark', click: () => setTheme('dark') }
     ] }] },
     { role: 'windowMenu' },
-    { role: 'help', submenu: [{ label: 'About Universal DB Workbench', click: showAbout }] }
+    { role: 'help', submenu: [
+      { label: 'Check for updates…', click: () => require('./updater').checkForUpdates() },
+      { label: 'Open log folder', click: () => shell.openPath(path.dirname(logFile())) },
+      { type: 'separator' },
+      { label: 'About Universal DB Workbench', click: showAbout }
+    ] }
   ]));
 }
 

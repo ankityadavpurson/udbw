@@ -2,16 +2,32 @@
   "name": "universal-db-workbench",
   "version": "0.1.0",
   "description": "Cross-platform desktop database workbench for MySQL, PostgreSQL, MongoDB, Supabase and Firebase Firestore",
+  "private": true,
+  "author": "Ankit Yadav",
+  "license": "UNLICENSED",
   "main": "src/main.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "yarn@1.22.22",
   "scripts": {
-    "start": "npm run build:ui && electron .",
-    "dev": "npm run build:ui && electron .",
+    "start": "vite build && electron .",
+    "dev": "node scripts/dev.mjs",
     "build:ui": "vite build",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "electron test/e2e/ui-smoke.cjs",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write src test scripts",
+    "format:check": "prettier --check src test scripts",
+    "check": "eslint . && vitest run && vite build",
+    "pack": "vite build && electron-builder --dir",
+    "dist": "vite build && electron-builder"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
+    "electron-updater": "^6.8.9",
     "firebase-admin": "^13.5.0",
     "mongodb": "^6.19.0",
     "mysql2": "^3.14.3",
@@ -22,17 +38,25 @@
     "xedonium": "^1.14.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9",
     "@vitejs/plugin-react": "^5",
     "autoprefixer": "^10.6.1",
     "electron": "^38.2.0",
     "electron-builder": "^26.0.12",
+    "eslint": "^9",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
     "postcss": "^8.5.30",
+    "prettier": "^3.9.10",
     "tailwindcss": "^3.4",
-    "vite": "^7"
+    "vite": "^7",
+    "vitest": "^3"
   },
   "build": {
     "appId": "dev.universaldb.workbench",
     "productName": "Universal DB Workbench",
+    "copyright": "Copyright © ${author}",
     "files": [
       "src/main.js",
       "src/main/**/*",
@@ -43,16 +67,31 @@
       "package.json"
     ],
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     },
     "mac": {
-      "target": "dmg"
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "linux": {
-      "target": "AppImage"
+      "target": "AppImage",
+      "category": "Development"
     }
   }
 }

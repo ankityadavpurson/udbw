@@ -22,7 +22,7 @@ function toCsv(result) {
   const { columns, rows } = toTable(result);
   const lines = [columns, ...rows].map(row => row.map(value => `"${text(value).replace(/"/g, '""')}"`).join(','));
   // The byte-order mark makes Excel read the file as UTF-8 instead of guessing a legacy code page.
-  return `﻿${lines.join('\r\n')}`;
+  return `\uFEFF${lines.join('\r\n')}`;
 }
 
 function toSqlInserts(result, tab, active) {

@@ -1,7 +1,6 @@
 const fs = require('fs');
 const { relaxedToJson, readString } = require('./relaxed');
 
-const MAX_LIMIT = 1000;
 // The Admin SDK is loaded on first use to keep app start-up light.
 const admin = () => require('firebase-admin');
 

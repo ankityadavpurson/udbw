@@ -1,0 +1,41 @@
+name: Release
+
+# Push a tag such as v0.2.0 to build installers for every platform and attach them to a draft GitHub release.
+# Signing is optional: without the secrets below the installers are built unsigned.
+#   WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD     Windows code-signing certificate (.pfx, base64 or URL) and its password
+#   MAC_CSC_LINK / MAC_CSC_KEY_PASSWORD     macOS "Developer ID Application" certificate (.p12, base64 or URL) and password
+#   APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID   macOS notarization
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: yarn test
+      - run: yarn build:ui
+      - name: Package and publish
+        # The publish settings make electron-builder write app-update.yml, which turns on in-app updates.
+        run: npx electron-builder --publish always -c.publish.provider=github -c.publish.owner=${{ github.repository_owner }} -c.publish.repo=${{ github.event.repository.name }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CSC_LINK || secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CSC_KEY_PASSWORD || secrets.WIN_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}

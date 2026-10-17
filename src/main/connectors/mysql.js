@@ -1,5 +1,6 @@
 const { normalizeSqlResult, buildSqlMutation, mutationResult } = require('./sql');
 const { capSql, sqlIsWrite } = require('../sqlText');
+const { logger } = require('../logger');
 
 // `dial` is the profile as it must be dialled (host/port already point at the SSH tunnel when one is used).
 function open(dial, tunnel) {
@@ -16,7 +17,7 @@ function open(dial, tunnel) {
 async function openChecked(dial, tunnel) {
   const client = await open(dial, tunnel);
   // Without a listener a dropped connection would be an uncaught exception in the main process.
-  client.on('error', err => console.error('[mysql] connection error', err.message));
+  client.on('error', err => logger.warn('[mysql] connection error:', err.message));
   try {
     await client.query('SELECT 1');
     if (dial.readOnly) await client.query('SET SESSION TRANSACTION READ ONLY');

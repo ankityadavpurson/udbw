@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const net = require('net');
 const windowState = require('./window');
+const { logger } = require('./logger');
 
 // Trust-on-first-use host keys: the first fingerprint seen for host:port is stored after the user confirms it,
 // and a different key later is refused.
@@ -65,7 +66,7 @@ async function createSshTunnel(profile, remoteHost, remotePort) {
     options.password = profile.sshPassword;
   }
   // A permanent 'error' listener: without one, an SSH error after the handshake would crash the main process.
-  client.on('error', err => console.error('[ssh] connection error', err.message));
+  client.on('error', err => logger.warn('[ssh] connection error:', err.message));
   await new Promise((resolve, reject) => {
     const fail = err => reject(hostProblem ? new Error(hostProblem) : err);
     client.once('error', fail);
@@ -86,7 +87,7 @@ async function createSshTunnel(profile, remoteHost, remotePort) {
     });
   });
   // When the SSH link drops, cut the forwarded sockets so the database driver sees the failure and the session reconnects.
-  client.once('close', () => { for (const socket of sockets) socket.destroy(); try { server.close(); } catch (_) {} });
+  client.once('close', () => { for (const socket of sockets) socket.destroy(); try { server.close(); } catch (_) { /* not listening */ } });
   try {
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   } catch (err) { client.end(); throw err; }
@@ -97,8 +98,8 @@ function closeTunnel(tunnel) {
   if (!tunnel) return Promise.resolve();
   return new Promise(resolve => {
     for (const socket of tunnel.sockets || []) socket.destroy();
-    try { tunnel.server.close(() => { try { tunnel.client.end(); } catch (_) {} resolve(); }); }
-    catch (_) { try { tunnel.client.end(); } catch (_) {} resolve(); }
+    try { tunnel.server.close(() => { try { tunnel.client.end(); } catch (_) { /* already closed */ } resolve(); }); }
+    catch (_) { try { tunnel.client.end(); } catch (_ignored) { /* already closed */ } resolve(); }
   });
 }
 

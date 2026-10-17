@@ -5,6 +5,7 @@ const windowState = require('./window');
 const store = require('./store');
 const sessions = require('./sessions');
 const { safeError, isReadOnlyQuery } = require('./errors');
+const { logger } = require('./logger');
 
 // Only the app's own main window may call these; anything else (a stray frame, a second window) is refused.
 function fromMainWindow(event) {
@@ -31,6 +32,10 @@ const rowLimit = value => (Number.isFinite(Number(value)) && Number(value) > 0 ?
 
 function registerIpc() {
   ipcMain.on('app:ready', event => { if (fromMainWindow(event)) windowState.revealMainWindow(); });
+  // Errors from the page itself (they never carry query results, only the message and stack).
+  ipcMain.on('log:renderer', (event, entry) => {
+    if (fromMainWindow(event)) logger.error('[renderer]', String(entry?.message || '').slice(0, 1000), String(entry?.stack || '').slice(0, 3000));
+  });
   ipcMain.on('theme:report', (event, theme) => { if (fromMainWindow(event)) windowState.applyTheme(theme); });
 
   handle('db:pick-service-account', async () => {
@@ -70,7 +75,7 @@ function registerIpc() {
 
   handle('db:test', ({ profile, id }) => attempt(async () => {
     try { await sessions.test(profile, id); }
-    catch (err) { console.error('[db:test] failed', err); throw err; }
+    catch (err) { logger.warn('[db:test] failed:', err.message); throw err; }
     return { label: profile.name || profile.type };
   }));
 

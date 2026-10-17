@@ -1,12 +1,10 @@
 const { app, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { MASK, SECRET_FIELDS, redactProfile, restoreSecrets } = require('./secrets');
 
 // Saved connections live here, in the main process. The renderer only ever sees them with secrets masked, and it
 // refers to a connection by id when it connects, so a password is never sent back and forth.
-const SECRET_FIELDS = ['password', 'apiKey', 'sshPassword', 'sshPassphrase', 'connectionString', 'uri'];
-const MASK = '••••••••';
-
 const storePath = () => path.join(app.getPath('userData'), 'connections.enc');
 // Besides the profiles it keeps the workspace: open tabs, query history and saved queries (all encrypted too).
 const emptyStore = () => ({ profiles: [], activeId: null, lastQueries: {}, tabs: {}, history: {}, snippets: [] });
@@ -16,12 +14,6 @@ let store = emptyStore();
 // never destroy saved connections that merely failed to decrypt.
 let unreadableBackup = null;
 
-const redactProfile = profile => {
-  const out = { ...profile };
-  delete out.secretsFrom;
-  for (const field of SECRET_FIELDS) if (out[field]) out[field] = MASK;
-  return out;
-};
 const redactedStore = () => ({ ...store, profiles: store.profiles.map(redactProfile) });
 
 const getProfile = id => store.profiles.find(p => p.id === id) || null;
@@ -29,11 +21,7 @@ const getProfile = id => store.profiles.find(p => p.id === id) || null;
 // Replaces masked secret fields in a profile coming from the renderer with the stored values.
 // A duplicated profile points at its source with `secretsFrom` until it has been saved once.
 function resolveSecrets(profile, id = profile.id) {
-  const out = { ...profile };
-  const base = getProfile(id) || getProfile(profile.secretsFrom);
-  delete out.secretsFrom;
-  for (const field of SECRET_FIELDS) if (out[field] === MASK) out[field] = base?.[field] ?? '';
-  return out;
+  return restoreSecrets(profile, getProfile(id) || getProfile(profile.secretsFrom));
 }
 
 function load() {

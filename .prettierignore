@@ -1,0 +1,6 @@
+dist
+release
+build
+node_modules
+yarn.lock
+*.md

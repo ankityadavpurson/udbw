@@ -98,7 +98,7 @@ async function liveSession(id) {
 
 async function dropSession(id, s) {
   if (sessions.get(id) === s) { sessions.delete(id); lost.add(id); }
-  try { await closeSession(s); } catch (_) {}
+  try { await closeSession(s); } catch (_) { /* already gone */ }
 }
 
 // Runs `run(session)`. When the connection turns out to be dead it is dropped, and `retry` (reads only) replays the

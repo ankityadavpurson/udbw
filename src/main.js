@@ -2,6 +2,10 @@ const { app, BrowserWindow } = require('electron');
 const windowState = require('./main/window');
 const { registerIpc } = require('./main/ipc');
 const sessions = require('./main/sessions');
+const { installCrashHandlers, logger } = require('./main/logger');
+const { checkForUpdates } = require('./main/updater');
+
+installCrashHandlers();
 
 registerIpc();
 
@@ -21,6 +25,8 @@ app.whenReady().then(() => {
   windowState.buildAppMenu();
   windowState.createSplash();
   windowState.createWindow();
+  logger.info(`Started Universal DB Workbench ${app.getVersion()} on ${process.platform} (Electron ${process.versions.electron})`);
+  setTimeout(() => checkForUpdates({ silent: true }), 15000);   // only does something in a release build
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) windowState.createWindow();
   });

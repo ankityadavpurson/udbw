@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('workbench', {
   pickServiceAccount: () => ipcRenderer.invoke('db:pick-service-account'),
   saveFile: payload => ipcRenderer.invoke('file:save', payload),
   pickSshKey: () => ipcRenderer.invoke('db:pick-ssh-key'),
+  logError: entry => ipcRenderer.send('log:renderer', entry),
   appReady: () => ipcRenderer.send('app:ready'),
   reportTheme: theme => ipcRenderer.send('theme:report', theme),
   onSetTheme: callback => {
