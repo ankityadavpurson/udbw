@@ -30,3 +30,9 @@ body { margin: 0; min-height: 0; overflow: hidden; }
 [role=dialog] .border-b.px-6 { padding: .75rem 1rem !important; }
 [role=dialog] .border-t.justify-end { padding: .625rem 1rem !important; }
 [role=dialog] .border-t.justify-end button { height: 1.5rem !important; min-height: 0 !important; padding: 0 .625rem !important; font-size: 10px !important; }
+
+/* Compact density for popups (they render in a portal, outside the app root). */
+[role=menu] { min-width: 10rem !important; }
+[role=menu] [role=menuitem] { padding: .3125rem .625rem !important; gap: .5rem !important; font-size: .75rem !important; }
+[role=menu] [role=menuitem] svg { width: .875rem !important; height: .875rem !important; }
+[role=listbox] [role=option] { padding-top: .3125rem !important; padding-bottom: .3125rem !important; font-size: .75rem !important; }

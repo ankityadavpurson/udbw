@@ -45,6 +45,7 @@ function revealMainWindow() {
 function createWindow() {
   mainWindow = new BrowserWindow({
     show: false,
+    autoHideMenuBar: true,   // the menu bar appears on Alt; its shortcuts keep working while hidden
     width: 1440,
     height: 940,
     minWidth: 1000,

@@ -115,7 +115,7 @@ export default function App() {
 
   return (
     <>
-      <div className="flex h-full overflow-hidden bg-app-bg text-app-text">
+      <div className="flex h-full overflow-hidden border-t border-app-border bg-app-bg text-app-text">
         {isMd && <aside className="shrink-0">{sidebar(() => {}, false, !isLg)}</aside>}
         <main className="min-w-0 flex-1 overflow-y-auto">
           <Stack gap={0}>
