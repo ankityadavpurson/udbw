@@ -1,4 +1,3 @@
-import React from 'react';
 import { Button, CodeDisplay, Flex, Modal, CopyIcon } from 'xedonium';
 
 export default function RecordViewerDialog({ open, onClose, record, onCopy }) {

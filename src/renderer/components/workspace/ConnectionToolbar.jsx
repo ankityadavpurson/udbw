@@ -1,4 +1,3 @@
-import React from 'react';
 import { ActionMenu, Button, Flex, HelperText, MenuIcon, MoreVerticalIcon, PlayIcon, PowerIcon } from 'xedonium';
 import StatusDot from '../StatusDot.jsx';
 

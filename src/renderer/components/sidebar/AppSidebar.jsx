@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Button, ChevronLeftIcon, ChevronRightIcon, Divider, Flex, HelperText, PlusIcon, RefreshIcon, Sidebar } from 'xedonium';
 import { NAV_STORAGE_KEY, engines } from '../../constants.js';
 import Logo from '../Logo.jsx';

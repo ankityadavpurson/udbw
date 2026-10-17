@@ -1,4 +1,3 @@
-import React from 'react';
 import { Button, Flex, FolderIcon, HelperText, Input, Loader, RefreshIcon, SearchIcon, Select, Stack, TableIcon, Tree } from 'xedonium';
 
 const typeLabel = type => ({ table: 'Tables', view: 'Views', collection: 'Collections' }[type] || type);

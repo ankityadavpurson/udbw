@@ -1,4 +1,3 @@
-import React from 'react';
 import { Alert, Button, Flex, Modal, Stack, TextArea } from 'xedonium';
 
 const verbs = { insert: 'Insert', edit: 'Edit', delete: 'Delete' };

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ConfirmDialog, CopyIcon, Drawer, EditIcon, RefreshIcon, Stack, StarIcon, Trash2Icon } from 'xedonium';
 import useMediaQuery from 'xedonium/hooks/useMediaQuery';
 import useConnections from './hooks/useConnections.js';

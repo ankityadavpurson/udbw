@@ -9,7 +9,7 @@ export function selectStatement(active, object) {
   return `SELECT * FROM "${(object.schema ? `${object.schema}"."` : '')}${object.name.replace(/"/g, '""')}" LIMIT 100;`;
 }
 
-export function sqlLiteral(value) {
+function sqlLiteral(value) {
   if (value === null) return 'NULL';
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (typeof value === 'object') value = JSON.stringify(value);

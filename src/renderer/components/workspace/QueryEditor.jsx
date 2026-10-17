@@ -1,4 +1,3 @@
-import React from 'react';
 import { TextArea } from 'xedonium';
 
 export default function QueryEditor({ value, onChange, onRun }) {

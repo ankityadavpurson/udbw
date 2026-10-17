@@ -1,4 +1,3 @@
-import React from 'react';
 import { Alert, Button, Checkbox, Divider, Field, Flex, HelperText, PasswordInput, Select, Stack } from 'xedonium';
 
 // Engine-specific form fields of the connection dialog.

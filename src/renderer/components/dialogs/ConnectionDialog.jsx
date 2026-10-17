@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Button, Flex, HelperText, Modal, Select, Stack, Field } from 'xedonium';
 import { engines } from '../../constants.js';
 import ConnectionFields from './ConnectionFields.jsx';

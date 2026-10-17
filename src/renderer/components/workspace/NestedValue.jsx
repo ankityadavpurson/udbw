@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon, Table } from 'xedonium';
 
 const MAX_COLUMNS = 12;
@@ -7,7 +7,7 @@ const MAX_DEPTH = 3;       // deeper levels fall back to JSON text
 const isNested = value => value !== null && typeof value === 'object';
 
 // SQL drivers hand JSON columns over as text, so '{"a":1}' is shown as a sub table too.
-export function asNested(value) {
+function asNested(value) {
   if (isNested(value)) return value;
   if (typeof value !== 'string' || value.length > 50000) return null;
   const text = value.trim();

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Alert, Button, ChevronDownIcon, ChevronRightIcon, CodeDisplay, ConfirmDialog, CopyIcon, EditIcon, Flex, HelperText, PlusIcon, Stack, TextArea, Trash2Icon } from 'xedonium';
 import { summarizeDocument } from '../../lib/results.js';
 

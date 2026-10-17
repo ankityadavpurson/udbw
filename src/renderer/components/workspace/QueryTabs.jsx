@@ -1,4 +1,3 @@
-import React from 'react';
 import { Button, CloseIcon, Flex, PlusIcon, Tabs } from 'xedonium';
 
 export default function QueryTabs({ tabs, activeTabId, canAdd, onSelect, onClose, onAdd }) {

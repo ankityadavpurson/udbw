@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   ActionMenu, Alert, Button, Card, Chip, CodeDisplay, CopyIcon, DataGrid, DatabaseIcon, Divider, DownloadIcon, EditIcon, EyeIcon, Flex,
   HelperText, PlusIcon, RefreshIcon, Stack, ToggleButton, ToggleButtonGroup, Trash2Icon
@@ -9,7 +8,7 @@ import DocumentList from './DocumentList.jsx';
 import NestedValue, { plainText } from './NestedValue.jsx';
 
 export default function ResultsPanel({ tab, status, records, isConnected, busy, onViewChange, onSelectIndex, onRerun, onCopyRow, onExportJson, onExportCsv }) {
-  const { result, error, view, meta, selectedObject, selectedIndex } = tab;
+  const { result, error, view, meta, selectedIndex } = tab;
   const { hasSelection, selectedJson, canEditSelected, openEditor, setViewerOpen } = records;
 
   const table = toTable(result);

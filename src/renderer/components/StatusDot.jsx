@@ -1,5 +1,3 @@
-import React from 'react';
-
 const colors = {
   connected: 'bg-green-500',
   connecting: 'animate-pulse bg-amber-500',
