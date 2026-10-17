@@ -261,7 +261,7 @@ ipcMain.handle('db:test', async (_event, { profile }) => {
   try {
     session = await connectProfile(profile);
     return { ok: true, label: profile.name || profile.type };
-  } catch (err) { return { ok: false, error: safeError(err) }; }
+  } catch (err) { console.error('[db:test] failed', err); return { ok: false, error: safeError(err) }; }
   finally { try { await closeSession(session); } catch (_) {} }
 });
 
