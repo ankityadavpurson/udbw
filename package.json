@@ -4,7 +4,7 @@
   "description": "Cross-platform desktop database workbench for MySQL, PostgreSQL, MongoDB, Supabase and Firebase Firestore",
   "private": true,
   "author": "Ankit Yadav",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "main": "src/main.js",
   "engines": {
     "node": ">=20"

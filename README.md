@@ -146,5 +146,4 @@ structure / index viewer, schema diagrams, importing data, enforcing Prettier ac
 
 ## License
 
-No license has been chosen yet (`"license": "UNLICENSED"` in `package.json`), so the code is not open for reuse. Pick one before
-sharing the project publicly.
+Released under the [MIT License](LICENSE).
