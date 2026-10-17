@@ -4,8 +4,8 @@
   "description": "Cross-platform desktop database workbench for MySQL, PostgreSQL, MongoDB, Supabase and Firebase Firestore",
   "main": "src/main.js",
   "scripts": {
-    "start": "yarn build:ui && electron .",
-    "dev": "yarn build:ui && electron .",
+    "start": "npm run build:ui && electron .",
+    "dev": "npm run build:ui && electron .",
     "build:ui": "vite build",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
@@ -34,7 +34,8 @@
     "appId": "dev.universaldb.workbench",
     "productName": "Universal DB Workbench",
     "files": [
-      "src/**/*",
+      "src/main.js",
+      "src/preload.js",
       "dist/**/*",
       "package.json"
     ],

@@ -143,7 +143,7 @@ async function connectProfile(profile) {
       host: uri?.hostname || profile.host, port: Number(uri?.port || profile.port || 3306),
       user: profile.username || (uri ? decodeURIComponent(uri.username) : ''), password: profile.password || (uri ? decodeURIComponent(uri.password) : ''),
       database: profile.database || (uri ? decodeURIComponent(uri.pathname.replace(/^\//, '')) : '') || undefined,
-      connectTimeout: 10000, ssl: profile.ssl ? { minVersion: 'TLSv1.2', servername: tunnel?.remoteHost || uri?.hostname } : undefined
+      connectTimeout: 10000, ssl: profile.ssl ? { minVersion: 'TLSv1.2', rejectUnauthorized: !profile.sslAllowUntrusted, servername: tunnel?.remoteHost || uri?.hostname } : undefined
     });
     s = { type: 'mysql', client, profile: savedProfile };
     await client.query('SELECT 1');
@@ -151,13 +151,13 @@ async function connectProfile(profile) {
     const client = new Client(profile.connectionString ? {
       connectionString: profile.connectionString,
       connectionTimeoutMillis: 10000,
-      ssl: profile.ssl ? { rejectUnauthorized: false, servername: tunnel?.remoteHost } : undefined
+      ssl: profile.ssl ? { rejectUnauthorized: !profile.sslAllowUntrusted, servername: tunnel?.remoteHost } : undefined
     } : {
       host: profile.host, port: Number(profile.port || 5432),
       user: profile.username, password: profile.password,
       database: profile.database || 'postgres',
       connectionTimeoutMillis: 10000,
-      ssl: profile.ssl ? { rejectUnauthorized: false, servername: tunnel?.remoteHost } : undefined
+      ssl: profile.ssl ? { rejectUnauthorized: !profile.sslAllowUntrusted, servername: tunnel?.remoteHost } : undefined
     });
     await client.connect();
     await client.query('SELECT 1');
@@ -167,7 +167,7 @@ async function connectProfile(profile) {
       const pgClient = new Client({
         connectionString: profile.connectionString,
         connectionTimeoutMillis: 10000,
-        ssl: profile.ssl ? { rejectUnauthorized: false, servername: tunnel?.remoteHost } : { rejectUnauthorized: true }
+        ssl: profile.ssl ? { rejectUnauthorized: !profile.sslAllowUntrusted, servername: tunnel?.remoteHost } : { rejectUnauthorized: true }
       });
       await pgClient.connect();
       await pgClient.query('SELECT 1');

@@ -11,7 +11,7 @@ A cross-platform Electron desktop starter with connection forms and working conn
 ## Requirements
 
 - Node.js 20 or newer (Node.js 22 LTS recommended)
-- npm
+- npm or yarn
 - Internet/network access to your database endpoints
 
 ## Run
@@ -48,23 +48,26 @@ Paste a MongoDB connection URI (for example, an Atlas `mongodb+srv://...` URI) a
 ### Firebase Firestore
 Create a service account for a Firebase project and download its JSON key file. Select the file in the app. The file path is used locally; the key contents are not copied into this project. Use a least-privilege service account. Firestore access via Admin SDK bypasses Firestore Security Rules, so only use trusted credentials and projects.
 
-## Important security notes
+## Features
+
+- SQL editor for MySQL, PostgreSQL, and Supabase SQL; command-style editors for MongoDB, Firestore, and Supabase REST.
+- Object browser: databases, schemas, tables/views/collections, columns, and primary keys; switch database in a live session.
+- Record insert/update/delete for MongoDB, Firestore, and Supabase REST (e.g. `update coll <id> {...}`, `create coll <id> {...}`).
+- SSH tunneling (password or private key) for MySQL, PostgreSQL, Supabase (connection string), and MongoDB.
+- Saved connections, encrypted at rest with Electron `safeStorage` (OS keychain / DPAPI) in the app's user-data folder.
+- Result table with filter, sort, pagination, cell/record viewer, and JSON view.
+
+## Security notes
 
 - This is a starter, not a security-audited product.
-- Database credentials are kept in application memory during the current run and are not persisted.
+- Saved connection profiles (including passwords, API keys, and SSH secrets) are stored encrypted via `safeStorage`; if secure storage is unavailable, connections are not saved.
+- TLS certificates are verified when TLS/SSL is enabled. The "Allow untrusted/self-signed certificate" option disables verification; use it only for hosts you trust.
+- SSH host keys are **not** verified yet; add known-hosts checking before using tunnels on untrusted networks.
 - Never commit service-account JSON, passwords, connection strings, or API keys.
 - SQL and document commands execute against the selected live database. Review commands before running them.
-- Avoid exposing the desktop app to untrusted local users.
-- TLS behavior depends on each database provider and connection settings. Add certificate verification/custom CA support before production use.
-- Supabase REST calls are subject to Row Level Security and the permissions of the API key. Supabase SQL access uses PostgreSQL credentials and privileges.
-- Firestore Admin SDK uses privileged service-account access; Security Rules do not restrict Admin SDK access.
+- Supabase REST calls are subject to Row Level Security and the permissions of the API key.
+- Firestore Admin SDK uses privileged service-account access; Security Rules do not restrict it.
 
-## Current scope
+## Not yet included
 
-- SQL editor for MySQL, PostgreSQL, and Supabase SQL.
-- Supabase REST table preview when the table name is known.
-- MongoDB list collections and JSON filter-based find.
-- Firestore list top-level collections and read documents.
-- Connection test, status, basic JSON/table result rendering.
-
-This is an extensible baseline. It is not yet a full commercial workbench: editing cells, safe SQL parameter binding UI, query cancellation, advanced SSH tunnels, schema diagrams, large-result streaming, and a plugin SDK are not included.
+Inline cell editing, query cancellation, result streaming for large SQL results, SSH host-key verification, schema diagrams, a plugin SDK, and automated tests.
