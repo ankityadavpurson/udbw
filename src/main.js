@@ -22,6 +22,7 @@ function createWindow() {
     minHeight: 680,
     backgroundColor: '#101116',
     title: 'Universal DB Workbench',
+    icon: path.join(__dirname, '../build/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

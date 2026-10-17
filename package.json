@@ -36,6 +36,7 @@
     "files": [
       "src/main.js",
       "src/preload.js",
+      "build/icon.png",
       "dist/**/*",
       "package.json"
     ],

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Button, ChevronLeftIcon, ChevronRightIcon, Divider, Flex, HelperText, PlusIcon, RefreshIcon, Sidebar } from 'xedonium';
 import { NAV_STORAGE_KEY, engines } from '../../constants.js';
-import Logo from '../Logo.jsx';
 import StatusDot from '../StatusDot.jsx';
 
 const readCollapsed = () => { try { return localStorage.getItem(NAV_STORAGE_KEY) === '1' ? true : null; } catch { return null; } };
@@ -33,17 +32,10 @@ export default function AppSidebar({ close, inDrawer, autoCollapsed, profiles, a
 
   return (
     <div className={`flex h-full flex-col border-r border-app-border bg-app-card ${inDrawer ? 'w-full' : collapsed ? 'w-14' : 'w-64'}`}>
-      <Flex align="center" justify={collapsed ? 'center' : 'between'} gap={2} className={`shrink-0 border-b border-app-border ${collapsed ? 'px-1 py-2' : 'px-3 py-2'}`}>
-        <Flex align="center" gap={2} className="min-w-0">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center text-app-strong"><Logo className="h-7 w-7" /></span>
-          {!collapsed && <span className="truncate text-sm font-bold" title="Universal DB Workbench">DB Workbench</span>}
-        </Flex>
-        {!collapsed && !inDrawer && <Button variant="flat" tooltip="Collapse sidebar" aria-label="Collapse sidebar" onClick={() => toggleNav(false)}><ChevronLeftIcon /></Button>}
-      </Flex>
       {collapsed && (
         <Flex direction="column" align="center" gap={2} className="shrink-0 border-b border-app-border px-1 py-2">
-          <Button tooltip="New connection" tooltipPlacement="right" aria-label="New connection" onClick={() => { onNew(); close(); }}><PlusIcon /></Button>
           <Button variant="flat" tooltip="Expand sidebar" tooltipPlacement="right" aria-label="Expand sidebar" onClick={() => toggleNav(true)}><ChevronRightIcon /></Button>
+          <Button tooltip="New connection" tooltipPlacement="right" aria-label="New connection" onClick={() => { onNew(); close(); }}><PlusIcon /></Button>
         </Flex>
       )}
       <Sidebar label="Connections" bordered={false} density="dense" collapsed={collapsed} className="!h-auto !w-full max-h-[42%] min-h-0 flex-none [&_li[role=presentation]]:!pt-1" activeKey={activeId || undefined}
@@ -53,6 +45,7 @@ export default function AppSidebar({ close, inDrawer, autoCollapsed, profiles, a
           <Flex gap={1}>
             <Button className="!h-7 !min-h-0 !py-0" variant="flat" tooltip="New connection" aria-label="New connection" onClick={() => { onNew(); close(); }}><PlusIcon /></Button>
             <Button className="!h-7 !min-h-0 !py-0" variant="flat" tooltip="Refresh connections" aria-label="Refresh connections" onClick={onRefresh}><RefreshIcon /></Button>
+            {!inDrawer && <Button className="!h-7 !min-h-0 !py-0" variant="flat" tooltip="Collapse sidebar" aria-label="Collapse sidebar" onClick={() => toggleNav(false)}><ChevronLeftIcon /></Button>}
           </Flex>
         </Flex>} />
       {!collapsed && <>
