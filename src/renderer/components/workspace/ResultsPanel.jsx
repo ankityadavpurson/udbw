@@ -6,6 +6,7 @@ import {
 import { engines } from '../../constants.js';
 import { isDocumentResult, toTable } from '../../lib/results.js';
 import DocumentList from './DocumentList.jsx';
+import NestedValue, { plainText } from './NestedValue.jsx';
 
 export default function ResultsPanel({ tab, status, records, isConnected, busy, onViewChange, onSelectIndex, onRerun, onCopyRow, onExportJson, onExportCsv }) {
   const { result, error, view, meta, selectedObject, selectedIndex } = tab;
@@ -13,8 +14,8 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
 
   const table = toTable(result);
   const columns = table.columns.map((column, j) => ({
-    key: `c${j}`, header: column, sortable: true, accessor: row => row[`c${j}`],
-    render: row => <span className="block max-w-[22rem] truncate" title={String(row[`c${j}`] ?? '')}>{row[`c${j}`] ?? ''}</span>
+    key: `c${j}`, header: column, sortable: true, accessor: row => plainText(row[`c${j}`]),
+    render: row => <div className="max-w-[26rem]"><NestedValue value={row[`c${j}`]} /></div>
   }));
   const rows = table.rows.map((row, index) => Object.fromEntries([['__i', index], ...row.map((value, j) => [`c${j}`, value])]));
 

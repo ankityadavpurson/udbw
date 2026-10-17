@@ -111,7 +111,7 @@ export default function App() {
 
   return (
     <>
-      <div className="flex h-screen overflow-hidden bg-app-bg text-app-text">
+      <div className="flex h-full overflow-hidden bg-app-bg text-app-text">
         {isMd && <aside className="shrink-0">{sidebar(() => {}, false, !isLg)}</aside>}
         <main className="min-w-0 flex-1 overflow-y-auto p-2">
           <Stack gap={2}>
@@ -131,7 +131,7 @@ export default function App() {
         {sidebar(() => setDrawerOpen(false), true, false)}
       </Drawer>
 
-      <ConnectionDialog dialog={dialog} />
+      <ConnectionDialog dialog={dialog} groups={[...new Set(conn.profiles.map(p => p.group?.trim() || 'Connections'))]} />
       <RecordEditorDialog records={records} objectName={tab.selectedObject?.name} />
       <RecordViewerDialog open={records.viewerOpen} onClose={() => records.setViewerOpen(false)} record={records.selectedJson} onCopy={copyText} />
       <ConfirmDialog open={!!deleteTarget} tone="danger" title="Delete connection" confirmLabel="Delete" onClose={() => setDeleteTarget(null)} onConfirm={() => deleteConnection(deleteTarget)}>

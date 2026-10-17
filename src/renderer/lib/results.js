@@ -11,12 +11,6 @@ export function autoView(result) {
   return isDocumentResult(result) ? 'json' : 'table';
 }
 
-const cell = value => {
-  if (value === null) return 'NULL';
-  if (value === undefined) return '';
-  return typeof value === 'object' ? JSON.stringify(value) : String(value);
-};
-
 // Table form of a result. Documents are flattened to one column per top-level field.
 export function toTable(result) {
   if (!result) return { columns: [], rows: [] };
@@ -25,7 +19,8 @@ export function toTable(result) {
   for (const doc of result.json) for (const key of Object.keys(doc || {})) if (!keys.includes(key)) keys.push(key);
   const idKeys = ['_id', 'id'].filter(key => keys.includes(key));
   const columns = [...idKeys, ...keys.filter(key => !idKeys.includes(key))].slice(0, MAX_DOCUMENT_COLUMNS);
-  return { columns, rows: result.json.map(doc => columns.map(column => cell(doc?.[column]))) };
+  // Values stay as they are (objects included) so nested data can be shown as sub tables.
+  return { columns, rows: result.json.map(doc => columns.map(column => doc?.[column])) };
 }
 
 const LABEL_KEYS = ['name', 'title', 'fullname', 'username', 'email', 'label', 'status', 'type'];

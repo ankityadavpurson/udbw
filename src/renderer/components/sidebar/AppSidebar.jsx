@@ -40,13 +40,21 @@ export default function AppSidebar({ close, inDrawer, autoCollapsed, profiles, a
         </Flex>
         {!collapsed && !inDrawer && <Button variant="flat" tooltip="Collapse sidebar" aria-label="Collapse sidebar" onClick={() => toggleNav(false)}><ChevronLeftIcon /></Button>}
       </Flex>
-      <Flex direction={collapsed ? 'column' : 'row'} align="center" gap={2} className={`shrink-0 border-b border-app-border ${collapsed ? 'px-1 py-2' : 'px-3 py-2'}`}>
-        <Button className={collapsed ? '' : 'flex-1'} tooltip={collapsed ? 'New connection' : undefined} tooltipPlacement="right" aria-label="New connection" onClick={() => { onNew(); close(); }}><PlusIcon />{!collapsed && ' New connection'}</Button>
-        {collapsed && <Button variant="flat" tooltip="Expand sidebar" tooltipPlacement="right" aria-label="Expand sidebar" onClick={() => toggleNav(true)}><ChevronRightIcon /></Button>}
-      </Flex>
-      <Sidebar label="Connections" bordered={false} density="dense" collapsed={collapsed} className="!h-auto !w-full max-h-[42%] min-h-0 flex-none" activeKey={activeId || undefined}
-        items={items} headerClassName={collapsed ? 'hidden' : 'px-3 py-2'}
-        header={<Flex justify="between" align="center"><span className="text-xs font-semibold uppercase tracking-widest text-app-muted">Connections</span><Button variant="flat" tooltip="Refresh connections" aria-label="Refresh connections" onClick={onRefresh}><RefreshIcon /></Button></Flex>} />
+      {collapsed && (
+        <Flex direction="column" align="center" gap={2} className="shrink-0 border-b border-app-border px-1 py-2">
+          <Button tooltip="New connection" tooltipPlacement="right" aria-label="New connection" onClick={() => { onNew(); close(); }}><PlusIcon /></Button>
+          <Button variant="flat" tooltip="Expand sidebar" tooltipPlacement="right" aria-label="Expand sidebar" onClick={() => toggleNav(true)}><ChevronRightIcon /></Button>
+        </Flex>
+      )}
+      <Sidebar label="Connections" bordered={false} density="dense" collapsed={collapsed} className="!h-auto !w-full max-h-[42%] min-h-0 flex-none [&_li[role=presentation]]:!pt-1" activeKey={activeId || undefined}
+        items={items} headerClassName={collapsed ? 'hidden' : 'px-3 py-1'} listClassName="py-0"
+        header={<Flex justify="between" align="center">
+          <span className="text-xs font-semibold uppercase tracking-widest text-app-muted">Connections</span>
+          <Flex gap={1}>
+            <Button className="!h-7 !min-h-0 !py-0" variant="flat" tooltip="New connection" aria-label="New connection" onClick={() => { onNew(); close(); }}><PlusIcon /></Button>
+            <Button className="!h-7 !min-h-0 !py-0" variant="flat" tooltip="Refresh connections" aria-label="Refresh connections" onClick={onRefresh}><RefreshIcon /></Button>
+          </Flex>
+        </Flex>} />
       {!collapsed && <>
         {!items.length && <HelperText className="px-4 pb-3">Add a connection to get started.</HelperText>}
         <Divider />
