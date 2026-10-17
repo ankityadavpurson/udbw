@@ -1,4 +1,6 @@
-const { ipcMain, dialog } = require('electron');
+const { app, ipcMain, dialog } = require('electron');
+const path = require('path');
+const fs = require('fs');
 const windowState = require('./window');
 const store = require('./store');
 const sessions = require('./sessions');
@@ -36,6 +38,20 @@ function registerIpc() {
       title: 'Choose Firebase service-account JSON', properties: ['openFile'], filters: [{ name: 'JSON files', extensions: ['json'] }]
     });
     return result.canceled ? null : result.filePaths[0] || null;
+  });
+
+  // Export: the user picks where the file goes in a native dialog; the page never chooses a path itself.
+  handle('file:save', async ({ defaultName, filters, text, base64 }) => {
+    const name = path.basename(String(defaultName || 'export.txt')).replace(/[<>:"/\\|?*]/g, '_');
+    const result = await dialog.showSaveDialog(windowState.getMainWindow(), {
+      title: 'Save export', defaultPath: path.join(app.getPath('downloads'), name),
+      filters: Array.isArray(filters) && filters.length ? filters : [{ name: 'All files', extensions: ['*'] }]
+    });
+    if (result.canceled || !result.filePath) return { ok: true, saved: false };
+    try {
+      fs.writeFileSync(result.filePath, base64 ? Buffer.from(String(base64), 'base64') : String(text ?? ''));
+      return { ok: true, saved: true, path: result.filePath };
+    } catch (err) { return { ok: false, error: { message: err.message } }; }
   });
 
   handle('db:pick-ssh-key', async () => {

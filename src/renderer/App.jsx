@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { ConfirmDialog, CopyIcon, Drawer, EditIcon, RefreshIcon, Stack, StarIcon, Trash2Icon } from 'xedonium';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIcon, BookmarkIcon, ClockIcon, CodeIcon, ConfirmDialog, CopyIcon, Drawer, EditIcon, RefreshIcon, Stack, StarIcon, Trash2Icon, ZapIcon } from 'xedonium';
 import useMediaQuery from 'xedonium/hooks/useMediaQuery';
 import useConnections from './hooks/useConnections.js';
 import useObjectTree from './hooks/useObjectTree.js';
@@ -10,7 +10,8 @@ import { selectStatement } from './lib/statements.js';
 import { assessCommand, assessStatement, splitStatements, statementAt } from './lib/sqlScript.js';
 import { buildBrowseQuery, canBrowse, DEFAULT_BROWSE } from './lib/browse.js';
 import { languageFor } from './lib/tokenize.js';
-import { copyToClipboard, downloadCsv, downloadJson } from './lib/exporters.js';
+import { copyToClipboard, exportResult } from './lib/exporters.js';
+import { formatSql } from './lib/sqlFormat.js';
 import TitleBar from './components/TitleBar.jsx';
 import AppSidebar from './components/sidebar/AppSidebar.jsx';
 import ObjectBrowser from './components/sidebar/ObjectBrowser.jsx';
@@ -21,12 +22,18 @@ import ResultsPanel from './components/workspace/ResultsPanel.jsx';
 import ConnectionDialog from './components/dialogs/ConnectionDialog.jsx';
 import RecordEditorDialog from './components/dialogs/RecordEditorDialog.jsx';
 import RecordViewerDialog from './components/dialogs/RecordViewerDialog.jsx';
+import HistoryDialog from './components/dialogs/HistoryDialog.jsx';
 
 const objectId = item => `${item.schema || ''}.${item.name}`;
 
 export default function App() {
   const [status, setStatus] = useState('Ready');
-  const [busy, setBusy] = useState(false);
+  // Several things can run at once (one per tab, or a connect), so busy is a count, not a flag that one of them could clear for all.
+  const [busyCount, setBusyCount] = useState(0);
+  const setBusy = useCallback(on => setBusyCount(count => Math.max(0, count + (on ? 1 : -1))), []);
+  const busy = busyCount > 0;
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyDraft, setHistoryDraft] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [pendingRun, setPendingRun] = useState(null);   // statements waiting for a confirmation: { statements, reasons, production }
@@ -38,7 +45,7 @@ export default function App() {
   const { active, activeId, isConnected } = conn;
   const tree = useObjectTree({ active, activeId, markLost: conn.markLost, updateProfile: conn.updateProfile, setStatus });
   const tabsApi = useQueryTabs({
-    activeId, active, isConnected, loaded: conn.loaded, lastQueries: conn.lastQueries, setBusy, setStatus,
+    activeId, active, isConnected, loaded: conn.loaded, lastQueries: conn.lastQueries, savedTabs: conn.savedTabs, setBusy, setStatus,
     onConnectionLost: id => { conn.markLost(id); tree.clear(); }
   });
   const { tab } = tabsApi;
@@ -47,6 +54,17 @@ export default function App() {
     connected: conn.connected, saveProfile: conn.saveProfile,
     onSaved: (next, existing) => { if (existing && existing.type !== next.type) tabsApi.resetConnectionTabs(next.id, next.type); }
   });
+
+  // Remember each connection's open tabs (queries and opened tables) for the next start.
+  useEffect(() => {
+    if (!conn.loaded) return;
+    const byConnection = {};
+    for (const t of tabsApi.tabs) if (t.connId) (byConnection[t.connId] ||= []).push(t);
+    for (const [connId, list] of Object.entries(byConnection)) {
+      const activeIndex = connId === activeId ? Math.max(0, list.findIndex(t => t.id === tab.id)) : conn.savedTabs[connId]?.active ?? 0;
+      conn.rememberTabs(connId, { tabs: list.map(t => ({ title: t.title, query: t.query, selectedObject: t.selectedObject, browse: t.browse })), active: activeIndex });
+    }
+  }, [tabsApi.tabs, tab.id, activeId, conn.loaded]);
 
   // Tells the main process the saved connections are loaded, so it can swap the splash for this window.
   useEffect(() => { if (conn.loaded) window.workbench.appReady(); }, [conn.loaded]);
@@ -107,14 +125,49 @@ export default function App() {
     const reasons = assessed.flatMap((item, i) => item.danger.map(reason => (statements.length > 1 ? `Statement ${i + 1}: ${reason}` : reason)));
     const production = active.environment === 'production' && assessed.some(item => item.write);
     if (reasons.length || production) setPendingRun({ statements, reasons, production });
-    else tabsApi.runScript(statements);
+    else runStatements(statements);
   }
+
+  // Every statement run from the editor goes into the connection's history.
+  const recordHistory = (info, text) => { if (active) conn.addHistory(active.id, { text, ...info }); };
+  const runStatements = statements => tabsApi.runScript(statements, undefined, { record: recordHistory });
 
   function confirmRun() {
     const run = pendingRun;
     setPendingRun(null);
-    if (run) tabsApi.runScript(run.statements);
+    if (run) runStatements(run.statements);
   }
+
+  const writeQuery = value => { tabsApi.setQuery(value); if (activeId) conn.setLastQuery(activeId, value); };
+
+  // Formats the selection, or the whole editor when nothing is selected.
+  function formatEditor() {
+    const dialect = languageFor(active);
+    if (dialect === 'command') { setStatus('Formatting is available for SQL connections.'); return; }
+    const target = editorRef.current?.getTarget() || { selection: '', start: 0, end: 0 };
+    const useSelection = target.selection.trim().length > 0;
+    const formatted = formatSql(useSelection ? target.selection : tab.query, dialect);
+    writeQuery(useSelection ? tab.query.slice(0, target.start) + formatted + tab.query.slice(target.end) : formatted);
+    setStatus('Formatted the SQL');
+  }
+
+  // EXPLAIN for the statement at the cursor. ANALYZE actually runs it, so a statement that changes data is confirmed first.
+  function explainEditor(analyze) {
+    if (!active || !isConnected) return;
+    const dialect = languageFor(active);
+    if (dialect === 'command') { setStatus('EXPLAIN is available for SQL connections.'); return; }
+    const [statement] = editorStatements('current');
+    if (!statement) { setStatus('Nothing to explain.'); return; }
+    const text = statement.replace(/;\s*$/, '');
+    const prefix = analyze ? (active.type === 'mysql' ? 'EXPLAIN ANALYZE ' : 'EXPLAIN (ANALYZE, BUFFERS) ') : 'EXPLAIN ';
+    const wrapped = `${prefix}${text}`;
+    if (analyze && assessStatement(text, dialect).write) setPendingRun({ statements: [wrapped], reasons: ['EXPLAIN ANALYZE really runs the statement, including any change it makes.'], production: false });
+    else runStatements([wrapped]);
+  }
+
+  function openHistory(draft = null) { setHistoryDraft(draft); setHistoryOpen(true); }
+  const snippetFamily = languageFor(active) === 'command' ? 'command' : 'sql';
+  const saveDraft = () => (editorRef.current?.getTarget().selection || tab.query).trim() || null;
 
   async function copyText(value) {
     if (value == null) return;
@@ -138,6 +191,15 @@ export default function App() {
     window.addEventListener('keydown', onShortcut);
     return () => window.removeEventListener('keydown', onShortcut);
   });
+
+  const language = languageFor(active);
+  const toolMenu = [
+    { key: 'format', label: 'Format SQL', icon: <CodeIcon />, disabled: language === 'command', onClick: formatEditor },
+    { key: 'explain', label: 'Explain', icon: <ActivityIcon />, disabled: !isConnected || language === 'command', onClick: () => explainEditor(false) },
+    { key: 'analyze', label: 'Explain analyze', icon: <ZapIcon />, disabled: !isConnected || language === 'command', onClick: () => explainEditor(true) },
+    { key: 'history', label: 'History and saved queries', icon: <ClockIcon />, disabled: !active, onClick: () => openHistory() },
+    { key: 'save', label: 'Save query…', icon: <BookmarkIcon />, disabled: !active, onClick: () => openHistory(saveDraft()) }
+  ];
 
   const connectionMenu = [
     { key: 'edit', label: 'Edit connection', icon: <EditIcon />, disabled: !active, onClick: () => dialog.openDialog(active) },
@@ -163,14 +225,14 @@ export default function App() {
           <main className="min-w-0 flex-1 overflow-y-auto">
             <Stack gap={0} className="min-h-full">
               <ConnectionToolbar active={active} engine={conn.engine} status={active ? conn.connectionStatus(active.id) : undefined} isConnected={isConnected} busy={busy}
-                showMenuButton={!isMd} onOpenMenu={() => setDrawerOpen(true)} onConnect={connect} onDisconnect={disconnect} onRun={() => runEditor('current')} onRunAll={() => runEditor('all')} onStop={tabsApi.cancelQuery} menuItems={connectionMenu} />
+                showMenuButton={!isMd} onOpenMenu={() => setDrawerOpen(true)} onConnect={connect} onDisconnect={disconnect} onRun={() => runEditor('current')} onRunAll={() => runEditor('all')} onStop={tabsApi.cancelQuery} toolItems={toolMenu} menuItems={connectionMenu} />
               <QueryTabs tabs={tabsApi.connTabs} activeTabId={tab.id} canAdd={Boolean(active)} onSelect={tabsApi.setActiveTabId} onClose={tabsApi.closeTab} onAdd={() => tabsApi.addTab()} />
-              <QueryEditor ref={editorRef} language={languageFor(active)} value={tab.query} onRun={runEditor}
-                onChange={value => { tabsApi.setQuery(value); if (activeId) conn.setLastQuery(activeId, value); }} />
+              <QueryEditor ref={editorRef} language={language} value={tab.query} onRun={runEditor} onFormat={formatEditor} onChange={writeQuery}
+                objects={tree.objectTree?.objects || []} loadColumns={object => tree.describeObject(object)} />
               <ResultsPanel tab={tab} status={status} records={records} isConnected={isConnected} busy={busy} readOnly={Boolean(active?.readOnly)} language={languageFor(active)}
                 onLoadMore={max => tabsApi.runQuery(tab.query, tab.id, { maxRows: max })} onBrowse={tabsApi.browseTo}
                 onViewChange={tabsApi.setView} onSelect={tabsApi.setSelected} onRerun={() => (tab.browse && tab.query === tab.browse.generated ? tabsApi.runQuery() : runEditor('all'))} onCopyRows={copyText}
-                onExportJson={() => downloadJson(tab.result)} onExportCsv={() => downloadCsv(tab.result)} />
+                onExport={async format => setStatus(await exportResult(format, tab, active))} />
             </Stack>
           </main>
         </div>
@@ -186,6 +248,11 @@ export default function App() {
       <ConfirmDialog open={records.bulkOpen} tone="danger" title="Delete records" confirmLabel="Delete" busy={records.bulkBusy} error={records.bulkError} onClose={() => records.setBulkOpen(false)} onConfirm={records.bulkDelete}>
         Delete {records.selectedCount} selected records? This cannot be undone.
       </ConfirmDialog>
+      <HistoryDialog open={historyOpen} onClose={() => setHistoryOpen(false)} draft={historyDraft}
+        history={active ? conn.history[active.id] || [] : []} snippets={conn.snippets.filter(item => item.family === snippetFamily)}
+        onUse={text => { writeQuery(text); setHistoryOpen(false); }} onOpenNew={text => { tabsApi.addTab({}, text); setHistoryOpen(false); }}
+        onSave={({ name, text }) => conn.addSnippet({ name, text, family: snippetFamily })} onRemoveSnippet={conn.removeSnippet}
+        onClear={() => active && conn.clearHistory(active.id)} />
       <ConfirmDialog open={!!pendingRun} tone="danger" title={pendingRun?.production && !pendingRun?.reasons.length ? 'Change data on production?' : 'Run this?'} confirmLabel="Run anyway" onClose={() => setPendingRun(null)} onConfirm={confirmRun}>
         <ul className="list-disc space-y-1 pl-5">
           {pendingRun?.production && <li>“{active?.name}” is marked as a production connection.</li>}

@@ -60,6 +60,11 @@ Create a service account for a Firebase project and download its JSON key file. 
 - Tables opened from the sidebar get a server-side page / sort / filter bar (`LIMIT … OFFSET`, `ORDER BY`, a `WHERE` filter).
 - **Run** executes the selection or the statement at the cursor (Ctrl/⌘+Enter); **Run all** runs every statement (Ctrl/⌘+Shift+Enter); **Stop** cancels a running query on MySQL, PostgreSQL/Supabase and Supabase REST.
 - Safety: a confirmation before `DELETE`/`UPDATE` without `WHERE`, `DROP`, `TRUNCATE`, and before any data change on a connection marked **Production**; connections can be **Read-only** (enforced in the main process and, for MySQL/PostgreSQL, by a read-only database session).
+- Editor: line numbers, Tab / Shift+Tab indentation (press Esc, then Tab, to move focus out), autocomplete for tables, columns, aliases and keywords (Ctrl/⌘+Space), SQL formatter (Ctrl/⌘+Shift+F), and Explain / Explain analyze under **Tools**.
+- Query history (per connection) and saved queries, under Tools → History and saved queries. Open tabs are restored on the next start. All of it is stored encrypted with the connections.
+- Export results as JSON, CSV (UTF-8 with BOM for Excel), Excel (.xlsx) or SQL INSERTs; the file name is based on the table and the time, and you choose where it goes in a native save dialog.
+- Results grid: drag a column edge to resize, double-click a cell to copy it, search across the loaded rows.
+- The window remembers its size, position and maximized state, and only one instance runs at a time.
 - PostgreSQL browser lists tables, views, materialized and foreign views, sequences and functions; columns, keys and indexes load when a table is opened.
 - MongoDB: `find <coll> {filter} SORT {…} PROJECT {…} SKIP n LIMIT n`, `count`, `aggregate`, `distinct`, or shell style `db.users.find({ status: 'active' }).sort({ age: -1 }).limit(20)` (also `insertOne/Many`, `updateOne/Many`, `deleteOne/Many`; `ObjectId()`, `ISODate()` and regex literals work).
 - Firestore: `read <path> WHERE field >= 18 AND … ORDER BY field DESC LIMIT n OFFSET n`, `count <path> WHERE …`, `collections [docPath]` for subcollections, and document paths like `read users/abc`.

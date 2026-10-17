@@ -7,7 +7,7 @@ import { buildBrowseQuery } from '../lib/browse.js';
 const connectionGone = error => Boolean(error?.unreachable) || /not connected/i.test(error?.message || '');
 
 // Query tabs (one set per connection) and the query runner. Results always land in the tab that started the query.
-export default function useQueryTabs({ activeId, active, isConnected, loaded, lastQueries, setBusy, setStatus, onConnectionLost }) {
+export default function useQueryTabs({ activeId, active, isConnected, loaded, lastQueries, savedTabs, setBusy, setStatus, onConnectionLost }) {
   const tabCounter = useRef({});
   const makeTab = (connId, queryText, extra = {}) => ({
     id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, connId,
@@ -32,6 +32,15 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
     if (!loaded) return;
     const mine = tabs.filter(t => t.connId === activeId);
     if (!mine.length) {
+      const saved = activeId && savedTabs?.[activeId];
+      if (saved?.tabs?.length) {
+        // Reopen the tabs of the last session (queries and opened tables; results are not kept).
+        const restored = saved.tabs.map(t => makeTab(activeId, t.query ?? '', { title: t.title, selectedObject: t.selectedObject ?? null, browse: t.browse ?? null }));
+        const highest = Math.max(0, ...saved.tabs.map(t => Number(/^Query (\d+)$/.exec(t.title || '')?.[1] || 0)));
+        tabCounter.current[activeId] = Math.max(tabCounter.current[activeId] || 0, highest);
+        setTabs(all => [...all, ...restored]); setActiveTabId(restored[Math.min(saved.active || 0, restored.length - 1)].id);
+        return;
+      }
       const fresh = makeTab(activeId, (active && (lastQueries[activeId] || engines[active.type].query)) || engines.mysql.query);
       setTabs(all => [...all, fresh]); setActiveTabId(fresh.id);
     } else if (!mine.some(t => t.id === activeTabId)) setActiveTabId(mine[0].id);
@@ -57,7 +66,7 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
 
   // Runs one request against the tab's connection and shows its outcome in that tab. `statement` is the text that was
   // sent (used to recognise a browse query); `prefix` labels errors of one statement inside a script.
-  async function runCall(call, tabId, { statement, prefix = '', suffix = '' } = {}) {
+  async function runCall(call, tabId, { statement, prefix = '', suffix = '', record } = {}) {
     if (!active || !isConnected) return false;
     const patch = changes => patchTab(changes, tabId);
     setBusy(true); setStatus('Executing…'); patch({ error: '', running: true }); const started = performance.now();
@@ -69,6 +78,7 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
       const code = res.error.code ? `\n\nCode: ${res.error.code}` : '';
       patch({ error: `${head}${message}${code}${note}`, meta: res.error.cancelled ? 'Cancelled' : 'Query failed', result: null, running: false });
       setStatus(res.error.cancelled ? 'Query cancelled' : `Error: ${message}`);
+      record?.({ ok: false, error: message, ms: Math.round(performance.now() - started) });
       if (connectionGone(res.error)) onConnectionLost(active.id);
       return false;
     }
@@ -85,6 +95,7 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
       }
       return { ...t, result: shown, hasNext, meta: `${data.message || 'Completed'} · ${data.elapsedMs} ms${suffix}`, selected: [], running: false, view: t.viewPinned ? t.view : autoView(shown) };
     }));
+    record?.({ ok: true, ms: data.elapsedMs, rows: data.rowCount ?? data.rows?.length ?? 0 });
     setStatus('Query completed');
     return true;
   }
@@ -97,11 +108,12 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
   }
 
   // Runs several statements one after the other, stopping at the first failure; the tab ends up showing the last result.
-  async function runScript(statements, tabId = tab.id) {
+  // `record({ ok, ms, rows, error }, statementText)` is told how each statement went (used for the query history).
+  async function runScript(statements, tabId = tab.id, { record } = {}) {
     const total = statements.length;
     for (let i = 0; i < total; i += 1) {
       if (total > 1) setStatus(`Running statement ${i + 1} of ${total}…`);
-      const ok = await runQuery(statements[i], tabId, total > 1 ? { prefix: `Statement ${i + 1} of ${total} failed:`, suffix: ` · statement ${i + 1} of ${total}` } : {});
+      const ok = await runQuery(statements[i], tabId, { ...(total > 1 ? { prefix: `Statement ${i + 1} of ${total} failed:`, suffix: ` · statement ${i + 1} of ${total}` } : {}), record: info => record?.(info, statements[i]) });
       if (!ok) return false;
     }
     if (total > 1) setStatus(`Ran ${total} statements`);
@@ -135,7 +147,7 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
   }
 
   return {
-    tab, connTabs, setActiveTabId, patchTab, setQuery, setError, setView, setSelected,
+    tab, tabs, connTabs, setActiveTabId, patchTab, setQuery, setError, setView, setSelected,
     addTab, closeTab, removeConnectionTabs, resetConnectionTabs, runQuery, runScript, runMutation, cancelQuery, browseTo
   };
 }

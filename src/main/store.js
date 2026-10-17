@@ -8,7 +8,9 @@ const SECRET_FIELDS = ['password', 'apiKey', 'sshPassword', 'sshPassphrase', 'co
 const MASK = '••••••••';
 
 const storePath = () => path.join(app.getPath('userData'), 'connections.enc');
-let store = { profiles: [], activeId: null, lastQueries: {} };
+// Besides the profiles it keeps the workspace: open tabs, query history and saved queries (all encrypted too).
+const emptyStore = () => ({ profiles: [], activeId: null, lastQueries: {}, tabs: {}, history: {}, snippets: [] });
+let store = emptyStore();
 
 // Copy kept of a store file that could not be read (one copy per run), so saving a new profile afterwards can
 // never destroy saved connections that merely failed to decrypt.
@@ -20,7 +22,7 @@ const redactProfile = profile => {
   for (const field of SECRET_FIELDS) if (out[field]) out[field] = MASK;
   return out;
 };
-const redactedStore = () => ({ profiles: store.profiles.map(redactProfile), activeId: store.activeId, lastQueries: store.lastQueries });
+const redactedStore = () => ({ ...store, profiles: store.profiles.map(redactProfile) });
 
 const getProfile = id => store.profiles.find(p => p.id === id) || null;
 
@@ -37,13 +39,13 @@ function resolveSecrets(profile, id = profile.id) {
 function load() {
   const file = storePath();
   try {
-    if (!fs.existsSync(file)) { store = { profiles: [], activeId: null, lastQueries: {} }; return { ok: true, ...redactedStore() }; }
+    if (!fs.existsSync(file)) { store = emptyStore(); return { ok: true, ...redactedStore() }; }
     if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage is unavailable on this device.');
     const saved = JSON.parse(safeStorage.decryptString(Buffer.from(fs.readFileSync(file, 'utf8'), 'base64')));
+    const data = Array.isArray(saved) ? { profiles: saved } : saved;
     store = {
-      profiles: Array.isArray(saved) ? saved : (saved.profiles || []),
-      activeId: Array.isArray(saved) ? null : (saved.activeId || null),
-      lastQueries: Array.isArray(saved) ? {} : (saved.lastQueries || {})
+      profiles: data.profiles || [], activeId: data.activeId || null, lastQueries: data.lastQueries || {},
+      tabs: data.tabs || {}, history: data.history || {}, snippets: Array.isArray(data.snippets) ? data.snippets : []
     };
     unreadableBackup = null;
     return { ok: true, ...redactedStore() };
@@ -64,7 +66,10 @@ function load() {
 // connecting works even when the disk write fails. Returns { ok, profiles (masked), error? }.
 function save(incoming) {
   if (!Array.isArray(incoming?.profiles)) return { ok: false, profiles: [], error: { message: 'Invalid connection data.' } };
-  store = { profiles: incoming.profiles.map(profile => resolveSecrets(profile)), activeId: incoming.activeId || null, lastQueries: incoming.lastQueries || {} };
+  store = {
+    profiles: incoming.profiles.map(profile => resolveSecrets(profile)), activeId: incoming.activeId || null, lastQueries: incoming.lastQueries || {},
+    tabs: incoming.tabs || {}, history: incoming.history || {}, snippets: Array.isArray(incoming.snippets) ? incoming.snippets : []
+  };
   const profiles = store.profiles.map(redactProfile);
   try {
     if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage is unavailable. Connections were not saved.');

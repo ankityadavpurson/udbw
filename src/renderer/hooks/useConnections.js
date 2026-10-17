@@ -8,6 +8,9 @@ const needsMasking = profiles => profiles.some(p => p.secretsFrom || SECRET_FIEL
 export default function useConnections({ setStatus, setBusy }) {
   const [profiles, setProfiles] = useState([]);
   const [lastQueries, setLastQueries] = useState({});
+  const [savedTabs, setSavedTabs] = useState({});     // connection id -> { tabs: [{ title, query, selectedObject, browse }], active }
+  const [history, setHistory] = useState({});          // connection id -> [{ id, text, at, ok, ms, rows, error }]
+  const [snippets, setSnippets] = useState([]);        // saved queries: { id, name, text, family }
   const [activeId, setActiveId] = useState(null);
   const [connected, setConnected] = useState([]);
   const [connectionStates, setConnectionStates] = useState({});
@@ -29,6 +32,7 @@ export default function useConnections({ setStatus, setBusy }) {
       if (saved.ok) {
         setStorageReady(true);
         setProfiles(saved.profiles || []); setLastQueries(saved.lastQueries || {});
+        setSavedTabs(saved.tabs || {}); setHistory(saved.history || {}); setSnippets(saved.snippets || []);
         setActiveId(saved.activeId && saved.profiles?.some(p => p.id === saved.activeId) ? saved.activeId : null);
       } else setStatus(`Could not restore saved connections: ${saved.error?.message || 'Secure storage unavailable'}`);
       setLoaded(true);
@@ -50,11 +54,11 @@ export default function useConnections({ setStatus, setBusy }) {
 
   useEffect(() => {
     if (!loaded || !storageReady) return undefined;
-    latestRef.current = { profiles, activeId, lastQueries };
+    latestRef.current = { profiles, activeId, lastQueries, tabs: savedTabs, history, snippets };
     pendingSaveRef.current = true;
     saveTimerRef.current = setTimeout(persist, 250);
     return () => clearTimeout(saveTimerRef.current);
-  }, [profiles, activeId, lastQueries, loaded, storageReady]);
+  }, [profiles, activeId, lastQueries, savedTabs, history, snippets, loaded, storageReady]);
 
   // Makes sure the main process has the saved settings before they are used to connect.
   async function flushSave() { if (pendingSaveRef.current && latestRef.current) await persist(); }
@@ -71,10 +75,27 @@ export default function useConnections({ setStatus, setBusy }) {
   const updateProfile = (id, patch) => setProfiles(all => all.map(p => p.id === id ? { ...p, ...patch } : p));
   const setLastQuery = (id, value) => setLastQueries(queries => ({ ...queries, [id]: value }));
 
+  // Open tabs of one connection, remembered for the next start. Ignored when nothing changed.
+  function rememberTabs(connId, entry) {
+    setSavedTabs(all => (JSON.stringify(all[connId]) === JSON.stringify(entry) ? all : { ...all, [connId]: entry }));
+  }
+
+  const HISTORY_LIMIT = 200;
+  function addHistory(connId, entry) {
+    setHistory(all => {
+      const list = all[connId] || [];
+      const rest = list[0] && list[0].text === entry.text ? list.slice(1) : list;   // the same statement run again just moves up
+      return { ...all, [connId]: [{ id: crypto.randomUUID(), at: Date.now(), ...entry }, ...rest].slice(0, HISTORY_LIMIT) };
+    });
+  }
+  const clearHistory = connId => setHistory(all => { const next = { ...all }; delete next[connId]; return next; });
+  const addSnippet = snippet => setSnippets(all => [{ id: crypto.randomUUID(), at: Date.now(), ...snippet }, ...all]);
+  const removeSnippet = id => setSnippets(all => all.filter(item => item.id !== id));
+
   async function refreshConnections() {
     const saved = await window.workbench.loadConnections();
     if (!saved.ok) { setStatus(`Connection refresh failed: ${saved.error?.message || 'Secure storage unavailable'}`); return; }
-    setStorageReady(true); setProfiles(saved.profiles || []); setLastQueries(saved.lastQueries || {}); setStatus('Connections refreshed from secure storage');
+    setStorageReady(true); setProfiles(saved.profiles || []); setLastQueries(saved.lastQueries || {}); setSavedTabs(saved.tabs || {}); setHistory(saved.history || {}); setSnippets(saved.snippets || []); setStatus('Connections refreshed from secure storage');
   }
 
   function chooseConnection(p) {
@@ -116,6 +137,8 @@ export default function useConnections({ setStatus, setBusy }) {
     setConnectionStates(states => { const next = { ...states }; delete next[p.id]; return next; });
     setProfiles(all => all.filter(item => item.id !== p.id)); setStorageReady(true);
     setLastQueries(all => { const next = { ...all }; delete next[p.id]; return next; });
+    setSavedTabs(all => { const next = { ...all }; delete next[p.id]; return next; });
+    clearHistory(p.id);
     if (activeId === p.id) setActiveId(null);
     setStatus(`Deleted ${p.name}.`);
   }
@@ -154,7 +177,7 @@ export default function useConnections({ setStatus, setBusy }) {
   }
 
   return {
-    profiles, lastQueries, activeId, active, isConnected, engine, connected, loaded, connectionStatus,
+    profiles, lastQueries, savedTabs, history, snippets, rememberTabs, addHistory, clearHistory, addSnippet, removeSnippet, activeId, active, isConnected, engine, connected, loaded, connectionStatus,
     chooseConnection, saveProfile, toggleFavorite, duplicateConnection, deleteConnection, connect, disconnect,
     markLost, refreshConnections, updateProfile, setLastQuery
   };

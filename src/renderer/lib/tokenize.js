@@ -1,7 +1,7 @@
 // Tokenizers for the query editor. Each returns one array of { kind, text } segments per line, where
 // kind is one of xedonium's token kinds (comment | string | keyword | tag | attr | number | fn) or null.
 
-const SQL_KEYWORDS = new Set(`select from where and or not null insert into values update set delete create table alter drop join left right inner
+export const SQL_KEYWORDS = new Set(`select from where and or not null insert into values update set delete create table alter drop join left right inner
 outer full cross on group by order having limit offset as distinct union all in is like ilike between exists case when then else end asc desc
 primary key foreign references index view database schema use show describe explain with returning default true false truncate begin commit
 rollback grant revoke if unique check constraint add column to using natural over partition window rename replace temporary temp cascade
@@ -10,7 +10,9 @@ restrict engine charset collate auto_increment`.split(/\s+/));
 const COMMANDS = new Set(['find', 'insert', 'update', 'delete', 'collections', 'read', 'create', 'rest:', 'count', 'aggregate', 'distinct']);
 const CLAUSES = new Set(['limit', 'offset', 'skip', 'sort', 'project', 'projection', 'where', 'and', 'order', 'by', 'asc', 'desc', 'true', 'false', 'null']);
 
-const SQL_TOKEN = /(--[^\n]*|#[^\n]*|\/\*[\s\S]*?(?:\*\/|$))|('(?:[^'\\]|\\.|'')*'?)|("(?:[^"\\]|\\.|"")*"?)|(`[^`]*`?)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][\w$]*)(\s*\()?/g;
+const SQL_TOKEN_MYSQL = /(--[^\n]*|#[^\n]*|\/\*[\s\S]*?(?:\*\/|$))|('(?:[^'\\]|\\.|'')*'?)|("(?:[^"\\]|\\.|"")*"?)|(`[^`]*`?)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][\w$]*)(\s*\()?/g;
+// `#` starts a comment only in MySQL; in PostgreSQL it is an operator.
+const SQL_TOKEN_PG = new RegExp(SQL_TOKEN_MYSQL.source.replace('|#[^\\n]*', ''), 'g');
 
 function splitLines(segments) {
   const lines = [[]];
@@ -27,7 +29,7 @@ function splitLines(segments) {
 function tokenizeSql(code, dialect) {
   const out = [];
   let last = 0;
-  for (const match of code.matchAll(SQL_TOKEN)) {
+  for (const match of code.matchAll(dialect === 'mysql' ? SQL_TOKEN_MYSQL : SQL_TOKEN_PG)) {
     if (match.index > last) out.push({ kind: null, text: code.slice(last, match.index) });
     const [text, comment, single, double, backtick, number, word, paren] = match;
     if (comment) out.push({ kind: 'comment', text });

@@ -1,5 +1,6 @@
-const { app, BrowserWindow, Menu, shell, dialog, session } = require('electron');
+const { app, BrowserWindow, Menu, screen, shell, dialog, session } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 // Custom title bar: the native one is hidden and Electron draws only the window buttons, in these colours.
 const TITLE_BAR = { height: 30, dark: { color: '#1f1f1f', symbolColor: '#ffffff' }, light: { color: '#ffffff', symbolColor: '#151515' } };
@@ -10,6 +11,35 @@ const root = path.join(__dirname, '..', '..');
 let mainWindow = null;
 let splash = null;
 let splashShownAt = 0;
+
+const stateFile = () => path.join(app.getPath('userData'), 'window-state.json');
+
+// Size, position and maximized state of the last session, ignoring a saved position that is no longer on any screen.
+function readWindowState() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
+    const bounds = {};
+    if (Number.isFinite(saved.width) && Number.isFinite(saved.height)) { bounds.width = Math.max(1000, saved.width); bounds.height = Math.max(680, saved.height); }
+    if (Number.isFinite(saved.x) && Number.isFinite(saved.y) && bounds.width) {
+      const visible = screen.getAllDisplays().some(({ workArea: a }) => saved.x < a.x + a.width - 80 && saved.x + bounds.width > a.x + 80 && saved.y >= a.y - 10 && saved.y < a.y + a.height - 80);
+      if (visible) { bounds.x = saved.x; bounds.y = saved.y; }
+    }
+    return { bounds, maximized: Boolean(saved.maximized) };
+  } catch (_) { return { bounds: {}, maximized: false }; }
+}
+
+function trackWindowState(win) {
+  let timer = null;
+  const write = () => {
+    if (win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
+    const maximized = win.isMaximized();
+    const bounds = maximized ? readWindowState().bounds : win.getNormalBounds();   // keep the restored size while maximized
+    try { fs.writeFileSync(stateFile(), JSON.stringify({ ...bounds, maximized })); } catch (_) { /* not critical */ }
+  };
+  const later = () => { clearTimeout(timer); timer = setTimeout(write, 400); };
+  win.on('resize', later); win.on('move', later); win.on('maximize', later); win.on('unmaximize', later);
+  win.on('close', () => { clearTimeout(timer); write(); });
+}
 
 const getMainWindow = () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
 
@@ -38,6 +68,7 @@ function revealMainWindow() {
 }
 
 function createWindow() {
+  const restored = readWindowState();
   mainWindow = new BrowserWindow({
     show: false,
     titleBarStyle: 'hidden',
@@ -45,6 +76,7 @@ function createWindow() {
     autoHideMenuBar: true,   // the menu bar appears on Alt; its shortcuts keep working while hidden
     width: 1440,
     height: 940,
+    ...restored.bounds,
     minWidth: 1000,
     minHeight: 680,
     backgroundColor: '#101116',
@@ -59,6 +91,8 @@ function createWindow() {
       allowRunningInsecureContent: false
     }
   });
+  if (restored.maximized) mainWindow.maximize();
+  trackWindowState(mainWindow);
   mainWindow.once('ready-to-show', () => { if (!splash) mainWindow.show(); });   // e.g. reopened from the dock
   mainWindow.webContents.on('did-fail-load', revealMainWindow);
   setTimeout(revealMainWindow, SPLASH_MAX_MS);

@@ -1,9 +1,9 @@
-import { Button, Chip, Flex, HelperText, Loader, LockIcon, Menu, MenuIcon, MoreVerticalIcon, PlayIcon, PowerIcon, XIcon } from 'xedonium';
+import { Button, Chip, CodeIcon, Flex, HelperText, Loader, LockIcon, Menu, MenuIcon, MoreVerticalIcon, PlayIcon, PowerIcon, XIcon } from 'xedonium';
 import StatusDot from '../StatusDot.jsx';
 
 const ENV_TONE = { production: 'danger', staging: 'warning', development: 'success' };
 
-export default function ConnectionToolbar({ active, engine, status, isConnected, busy, showMenuButton, onOpenMenu, onConnect, onDisconnect, onRun, onRunAll, onStop, menuItems }) {
+export default function ConnectionToolbar({ active, engine, status, isConnected, busy, showMenuButton, onOpenMenu, onConnect, onDisconnect, onRun, onRunAll, onStop, toolItems, menuItems }) {
   return (
     <Flex gap={2} align="center" justify="between" wrap className="px-2 py-1.5">
       <Flex gap={2} align="center" className="min-w-0">
@@ -24,6 +24,7 @@ export default function ConnectionToolbar({ active, engine, status, isConnected,
             <Button disabled={!isConnected} tooltip="Runs the selection, or the statement at the cursor (Ctrl / ⌘ + Enter)" onClick={onRun}><PlayIcon /> Run</Button>
             <Button variant="secondary" disabled={!isConnected} tooltip="Runs every statement in the editor (Ctrl / ⌘ + Shift + Enter)" onClick={onRunAll}>Run all</Button>
           </>}
+        <Menu label="Editor tools" variant="secondary" placement="bottom-end" trigger={<><CodeIcon /> Tools</>} items={toolItems} />
         <Menu label="Connection actions" variant="secondary" placement="bottom-end" trigger={<MoreVerticalIcon />} items={menuItems} />
       </Flex>
     </Flex>

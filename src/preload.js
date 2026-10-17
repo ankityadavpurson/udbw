@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('workbench', {
   cancel: (payload) => ipcRenderer.invoke('db:cancel', payload),
   describe: (payload) => ipcRenderer.invoke('db:describe', payload),
   pickServiceAccount: () => ipcRenderer.invoke('db:pick-service-account'),
+  saveFile: payload => ipcRenderer.invoke('file:save', payload),
   pickSshKey: () => ipcRenderer.invoke('db:pick-ssh-key'),
   appReady: () => ipcRenderer.send('app:ready'),
   reportTheme: theme => ipcRenderer.send('theme:report', theme),

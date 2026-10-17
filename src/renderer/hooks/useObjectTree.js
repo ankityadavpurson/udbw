@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 // The main process re-opens a dropped connection itself; `unreachable` means that failed (or there was none).
 const connectionGone = error => Boolean(error?.unreachable) || /not connected/i.test(error?.message || '');
@@ -10,11 +10,15 @@ export default function useObjectTree({ active, activeId, markLost, updateProfil
   const [currentDatabase, setCurrentDatabase] = useState('');
   const [currentSchema, setCurrentSchema] = useState('');
   const [objectSearch, setObjectSearch] = useState('');
+  // Only the newest load may write its result: a slow answer for a connection or database you have left is dropped.
+  const loadSeq = useRef(0);
 
   async function loadObjectTree(id = activeId, database = currentDatabase, schema = currentSchema) {
     if (!id) return;
+    const seq = ++loadSeq.current;
     setTreeLoading(true);
     const response = await window.workbench.discover({ id, database: database || undefined, schema: schema || undefined });
+    if (seq !== loadSeq.current) return;
     setTreeLoading(false);
     if (!response.ok) {
       const message = response.error?.message || 'Could not load database objects.';
@@ -45,7 +49,8 @@ export default function useObjectTree({ active, activeId, markLost, updateProfil
   // A different connection became active: reset the selectors and load (or clear) its objects.
   async function resetFor(profile, isConnected) {
     setCurrentDatabase(profile.database || ''); setCurrentSchema(''); setObjectSearch('');
-    if (isConnected) await loadObjectTree(profile.id, profile.database || ''); else setObjectTree(null);
+    if (isConnected) await loadObjectTree(profile.id, profile.database || '');
+    else { loadSeq.current += 1; setTreeLoading(false); setObjectTree(null); }
   }
 
   // Columns, keys and indexes are read when a table is opened, not for the whole schema up front.
@@ -64,7 +69,7 @@ export default function useObjectTree({ active, activeId, markLost, updateProfil
     return described;
   }
 
-  const clear = () => setObjectTree(null);
+  const clear = () => { loadSeq.current += 1; setTreeLoading(false); setObjectTree(null); };
 
   return {
     objectTree, treeLoading, currentDatabase, currentSchema, objectSearch, setObjectSearch,

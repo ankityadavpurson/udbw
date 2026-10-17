@@ -5,7 +5,18 @@ const sessions = require('./main/sessions');
 
 registerIpc();
 
+// One window per user: starting the app again just brings the existing one forward.
+const primary = app.requestSingleInstanceLock();
+if (!primary) app.quit();
+app.on('second-instance', () => {
+  const win = windowState.getMainWindow();
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show(); win.focus();
+});
+
 app.whenReady().then(() => {
+  if (!primary) return;
   windowState.hardenWebContents();
   windowState.buildAppMenu();
   windowState.createSplash();

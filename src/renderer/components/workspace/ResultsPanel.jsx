@@ -4,6 +4,8 @@ import {
   HelperText, Loader, PlusIcon, RefreshIcon, Stack, ToggleButton, ToggleButtonGroup, Trash2Icon
 } from 'xedonium';
 import { engines } from '../../constants.js';
+import { EXPORT_FORMATS } from '../../lib/exporters.js';
+import ResizableHeader from './ResizableHeader.jsx';
 import { isDocumentResult, toRecords, toTable } from '../../lib/results.js';
 import BrowseBar from './BrowseBar.jsx';
 import DocumentList from './DocumentList.jsx';
@@ -11,7 +13,7 @@ import NestedValue, { plainText } from './NestedValue.jsx';
 
 const MAX_LOAD = 100000;
 
-export default function ResultsPanel({ tab, status, records, isConnected, busy, readOnly, language, onViewChange, onSelect, onRerun, onCopyRows, onExportJson, onExportCsv, onLoadMore, onBrowse }) {
+export default function ResultsPanel({ tab, status, records, isConnected, busy, readOnly, language, onViewChange, onSelect, onRerun, onCopyRows, onExport, onLoadMore, onBrowse }) {
   const { result, error, view, meta, selected } = tab;
   // Only show the loader for queries that take a moment, so quick ones don't flash.
   const [slow, setSlow] = useState(false);
@@ -23,6 +25,10 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
   const { hasSelection, selectedCount, selectedDocs, selectedJson, canEditSelected, canDeleteSelected, openEditor, setViewerOpen, setBulkOpen } = records;
 
   const table = toTable(result);
+  // Column widths the user dragged; a new result (other tab or other columns) starts fresh.
+  const [widths, setWidths] = useState({});
+  const columnsKey = table.columns.join('|');
+  useEffect(() => setWidths({}), [tab.id, columnsKey]);
   // Browse mode: the toolbar drives the tab's own query, so it only shows while the query is still the generated one.
   const browsing = Boolean(tab.browse && tab.query === tab.browse.generated);
   const browseColumns = tab.selectedObject?.columns?.length ? tab.selectedObject.columns : table.columns.filter(column => column !== 'document');
@@ -38,8 +44,15 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
     </div>
   ) : null;
   const columns = table.columns.map((column, j) => ({
-    key: `c${j}`, header: column, sortable: true, accessor: row => plainText(row[`c${j}`]),
-    render: row => <div className="max-w-[26rem]"><NestedValue value={row[`c${j}`]} /></div>
+    key: `c${j}`, sortable: true, accessor: row => plainText(row[`c${j}`]), width: widths[`c${j}`],
+    header: <ResizableHeader label={column} onResize={width => setWidths(all => ({ ...all, [`c${j}`]: width }))} />,
+    // Double-click a cell to copy its value.
+    render: row => (
+      <div className="max-w-[26rem] break-words" style={widths[`c${j}`] ? { maxWidth: widths[`c${j}`] - 24 } : undefined} title="Double-click to copy"
+        onDoubleClick={() => onCopyRows(typeof row[`c${j}`] === 'object' && row[`c${j}`] !== null ? row[`c${j}`] : plainText(row[`c${j}`]))}>
+        <NestedValue value={row[`c${j}`]} />
+      </div>
+    )
   }));
   const rows = table.rows.map((row, index) => Object.fromEntries([['__i', index], ...row.map((value, j) => [`c${j}`, value])]));
 
@@ -68,7 +81,7 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
           <Button variant="secondary" disabled={!hasSelection} onClick={() => onCopyRows(selectedCount === 1 ? selectedJson : selectedDocs)}><CopyIcon /> {selectedCount > 1 ? 'Copy rows' : 'Copy row'}</Button>
           <Button variant="flat" disabled={!isConnected || busy} tooltip="Re-run query" onClick={onRerun}><RefreshIcon /></Button>
         </Flex>
-        <DataGrid columns={columns} rows={rows} rowKey="__i" selectable pageSize={browsing ? tab.browse.pageSize : 10} pageSizeOptions={browsing ? undefined : [10, 25, 50, 100]} hideFooterWhenSinglePage
+        <DataGrid columns={columns} rows={rows} rowKey="__i" selectable searchable pageSize={browsing ? tab.browse.pageSize : 50} pageSizeOptions={browsing ? undefined : [25, 50, 100, 250]} hideFooterWhenSinglePage
           selected={selected} onSelectionChange={onSelect}
           empty="No rows returned." caption="Query results"
           className="compact-grid !gap-2 [&_div.overflow-x-auto]:!border-x-0 [&>div:last-child]:px-2" />
@@ -76,10 +89,9 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
     );
   };
 
-  const exportItems = [
-    { key: 'json', label: 'Export JSON', icon: <DownloadIcon />, disabled: !result, onClick: onExportJson },
-    { key: 'csv', label: 'Export CSV', icon: <DownloadIcon />, disabled: !result, onClick: onExportCsv }
-  ];
+  const exportItems = EXPORT_FORMATS.map(({ key, label }) => ({
+    key, label, icon: <DownloadIcon />, disabled: !result || (key === 'sql' && isDocumentResult(result)), onClick: () => onExport(key)
+  }));
 
   return (
     <Card className="compact-card flex-1 !border-x-0 !border-t-0 [&>div:last-child]:flex [&>div:last-child]:flex-col" title="Results" subtitle={`${meta} · ${status}`} padded={false}
