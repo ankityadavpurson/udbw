@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { engines, blankTab } from '../constants.js';
 import { autoView } from '../lib/results.js';
 
-const CONNECTION_LOST = /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|57P01|08006|08001|14 UNAVAILABLE|4 DEADLINE_EXCEEDED|connection terminated|not connected|server closed the connection/i;
+// The main process re-opens a dropped connection on the next request; `unreachable` means that failed (or there was none).
+const connectionGone = error => Boolean(error?.unreachable) || /not connected/i.test(error?.message || '');
 
 // Query tabs (one set per connection) and the query runner. Results always land in the tab that started the query.
 export default function useQueryTabs({ activeId, active, isConnected, loaded, lastQueries, setBusy, setStatus, onConnectionLost }) {
@@ -53,15 +54,17 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
   const removeConnectionTabs = connId => setTabs(all => all.filter(t => t.connId !== connId));
   const resetConnectionTabs = (connId, type) => setTabs(all => all.map(t => t.connId === connId ? { ...t, query: engines[type].query, result: null, error: '', selected: [] } : t));
 
-  async function runQuery(statement = tab.query, tabId = tab.id) {
-    if (!active || !isConnected || !statement.trim()) return false;
+  // Runs one request against the tab's connection and shows its outcome in that tab.
+  async function runCall(call, tabId) {
+    if (!active || !isConnected) return false;
     const patch = changes => patchTab(changes, tabId);
     setBusy(true); setStatus('Executing…'); patch({ error: '', running: true }); const started = performance.now();
-    const res = await window.workbench.query({ id: active.id, query: statement.trim() }); setBusy(false);
+    const res = await call(); setBusy(false);
     if (!res.ok) {
       const message = res.error.message || 'Unknown error';
-      patch({ error: `${message}${res.error.code ? `\n\nCode: ${res.error.code}` : ''}`, meta: 'Query failed', result: null, running: false }); setStatus(`Error: ${message}`);
-      if (CONNECTION_LOST.test(`${res.error.code || ''} ${message}`)) onConnectionLost(active.id);
+      const note = res.error.lost ? '\n\nThe connection dropped. It will reconnect the next time you run something.' : '';
+      patch({ error: `${message}${res.error.code ? `\n\nCode: ${res.error.code}` : ''}${note}`, meta: 'Query failed', result: null, running: false }); setStatus(`Error: ${message}`);
+      if (connectionGone(res.error)) onConnectionLost(active.id);
       return false;
     }
     const data = { ...res.result, elapsedMs: Math.round(performance.now() - started) };
@@ -70,8 +73,19 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
     return true;
   }
 
+  function runQuery(statement = tab.query, tabId = tab.id) {
+    if (!active || !statement.trim()) return Promise.resolve(false);
+    return runCall(() => window.workbench.query({ id: active.id, query: statement.trim() }), tabId);
+  }
+
+  // Structured insert / update / delete (see lib/statements.js); the caller refreshes the results afterwards.
+  function runMutation(op, tabId = tab.id) {
+    if (!active) return Promise.resolve(false);
+    return runCall(() => window.workbench.mutate({ id: active.id, op }), tabId);
+  }
+
   return {
     tab, connTabs, setActiveTabId, patchTab, setQuery, setError, setView, setSelected,
-    addTab, closeTab, removeConnectionTabs, resetConnectionTabs, runQuery
+    addTab, closeTab, removeConnectionTabs, resetConnectionTabs, runQuery, runMutation
   };
 }

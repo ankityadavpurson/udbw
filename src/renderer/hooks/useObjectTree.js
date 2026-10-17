@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
-const CONNECTION_LOST = /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|57P01|08006|08001|14 UNAVAILABLE|4 DEADLINE_EXCEEDED/i;
+// The main process re-opens a dropped connection itself; `unreachable` means that failed (or there was none).
+const connectionGone = error => Boolean(error?.unreachable) || /not connected/i.test(error?.message || '');
 
 // Database/schema selection and the object list shown in the sidebar.
 export default function useObjectTree({ active, activeId, markLost, updateProfile, setStatus }) {
@@ -17,7 +18,7 @@ export default function useObjectTree({ active, activeId, markLost, updateProfil
     setTreeLoading(false);
     if (!response.ok) {
       const message = response.error?.message || 'Could not load database objects.';
-      if (CONNECTION_LOST.test(`${response.error?.code || ''} ${message}`)) markLost(id);
+      if (connectionGone(response.error)) markLost(id);
       setObjectTree({ databases: [], schemas: [], objects: [], message }); return;
     }
     const next = response.result;

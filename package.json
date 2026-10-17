@@ -35,6 +35,7 @@
     "productName": "Universal DB Workbench",
     "files": [
       "src/main.js",
+      "src/main/**/*",
       "src/preload.js",
       "build/icon.png",
       "src/splash.html",

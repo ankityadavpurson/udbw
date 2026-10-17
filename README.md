@@ -40,7 +40,7 @@ Enter host, port (5432 by default), database, username, and password. Enable SSL
 ### Supabase
 For SQL access, use the PostgreSQL connection string from **Supabase Dashboard → Project Settings → Database → Connection string**. Paste it into the connection string field. A direct connection may not work from networks that block IPv6 or if your plan/provider requires the session pooler; try the Supavisor session pooler connection string when needed.
 
-Optional REST access: enter your project URL and an API key. Use a publishable/anon key for user-scoped access. A secret/service-role key bypasses Row Level Security and should only be used if you understand the risk. Keys are held in memory by this app session and are not written to disk.
+Optional REST access: enter your project URL and an API key. Use a publishable/anon key for user-scoped access. A secret/service-role key bypasses Row Level Security and should only be used if you understand the risk. Keys are saved with the connection, encrypted by the OS keychain (see Security notes), and are kept in the app's main process rather than the UI.
 
 ### MongoDB
 Paste a MongoDB connection URI (for example, an Atlas `mongodb+srv://...` URI) and optionally specify a database name.
@@ -61,6 +61,10 @@ Create a service account for a Firebase project and download its JSON key file. 
 
 - This is a starter, not a security-audited product.
 - Saved connection profiles (including passwords, API keys, and SSH secrets) are stored encrypted via `safeStorage`; if secure storage is unavailable, connections are not saved.
+- Secrets stay in the Electron main process: the UI only receives masked values (`••••••••`) and connects by connection id, so passwords are never sent back to the page. Typing over a masked field replaces the stored secret.
+- The window is locked down: a Content-Security-Policy, no pop-up windows or navigation away from the app, only the main window may call the database APIs, and developer tools exist only when running from source.
+- Record inserts, edits and deletes are sent as structured operations and run as parameterized SQL (or driver calls), not assembled into query text.
+- A dropped connection is re-opened automatically on the next request (reads are retried once); a second connection serves the object browser so a long query never blocks it.
 - TLS certificates are verified when TLS/SSL is enabled. The "Allow untrusted/self-signed certificate" option disables verification; use it only for hosts you trust.
 - SSH host keys use trust-on-first-use: you confirm the fingerprint the first time, it is stored in `known_hosts.json` in the app data folder, and a changed key is refused.
 - Never commit service-account JSON, passwords, connection strings, or API keys.

@@ -1,6 +1,6 @@
 const isRestSupabase = active => active?.type === 'supabase' && !active.connectionString;
-// Ids travel inside a one-line text command, so they are percent-encoded (the main process decodes them).
-const encodeId = id => encodeURIComponent(String(id));
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const objectRef = object => ({ name: object.name, schema: object.schema });
 
 // SELECT-style statement used when an object is opened from the sidebar.
 export function selectStatement(active, object) {
@@ -8,14 +8,7 @@ export function selectStatement(active, object) {
   if (active?.type === 'firestore') return `read ${object.name} LIMIT 100`;
   if (isRestSupabase(active)) return `REST: ${object.name} LIMIT 100`;
   if (active?.type === 'mysql') return `SELECT * FROM \`${object.name.replace(/`/g, '``')}\` LIMIT 100;`;
-  return `SELECT * FROM "${(object.schema ? `${object.schema}"."` : '')}${object.name.replace(/"/g, '""')}" LIMIT 100;`;
-}
-
-function sqlLiteral(value) {
-  if (value === null) return 'NULL';
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (typeof value === 'object') value = JSON.stringify(value);
-  return `'${String(value).replace(/'/g, "''")}'`;
+  return `SELECT * FROM "${(object.schema ? `${object.schema.replace(/"/g, '""')}"."` : '')}${object.name.replace(/"/g, '""')}" LIMIT 100;`;
 }
 
 // True when the selected row can be edited/deleted for this connection and object.
@@ -25,57 +18,64 @@ export function canEditRecord(active, selectedObject, selectedJson) {
   return Boolean(keys?.length && keys.every(key => selectedJson?.[key] !== undefined));
 }
 
-// Builds the command for an insert / edit / delete. Returns { statement } or { error }.
-export function buildRecordStatement({ active, object, action, record, selectedJson }) {
-  const restKey = object.primaryKey?.[0] || 'id';
-  const docId = isRestSupabase(active)
-    ? (selectedJson?.[restKey] ?? record[restKey])
-    : (selectedJson?.id ?? selectedJson?._id ?? record.id ?? record._id);
-  if (action !== 'insert' && (docId === undefined || docId === null || docId === '')) return { error: 'The selected record does not include an identifier needed for this operation.' };
-
-  if (active.type === 'mongodb') {
-    const collection = object.name;
-    if (action === 'insert') return { statement: `insert ${collection} ${JSON.stringify(record)}` };
-    if (action === 'edit') { const { _id, ...changes } = record; return { statement: `update ${collection} ${encodeId(docId)} ${JSON.stringify(changes)}` }; }
-    return { statement: `delete ${collection} ${encodeId(docId)}` };
-  }
-  if (active.type === 'firestore') {
-    const collection = object.name;
-    if (action === 'insert') { const { id, ...data } = record; return { statement: `create ${collection} ${encodeId(id || crypto.randomUUID())} ${JSON.stringify(data)}` }; }
-    if (action === 'edit') { const { id, ...changes } = record; return { statement: `update ${collection} ${encodeId(docId)} ${JSON.stringify(changes)}` }; }
-    return { statement: `delete ${collection} ${encodeId(docId)}` };
-  }
-  if (isRestSupabase(active)) {
-    if (action === 'insert') return { statement: `INSERT ${object.name} ${JSON.stringify(record)}` };
-    if (action === 'edit') {
-      const changes = Object.fromEntries(Object.entries(record).filter(([key, value]) => key !== restKey && JSON.stringify(value) !== JSON.stringify(selectedJson?.[key])));
-      if (!Object.keys(changes).length) return { error: 'Change at least one field before saving.' };
-      return { statement: `UPDATE ${object.name} ${restKey}=${encodeId(docId)} ${JSON.stringify(changes)}` };
-    }
-    return { statement: `DELETE ${object.name} ${restKey}=${encodeId(docId)}` };
-  }
-
-  const quote = active.type === 'mysql' ? value => `\`${String(value).replace(/`/g, '``')}\`` : value => `"${String(value).replace(/"/g, '""')}"`;
-  const table = `${object.schema ? `${quote(object.schema)}.` : ''}${quote(object.name)}`;
-  const keys = object.primaryKey || [];
-  if (action === 'insert') {
-    const entries = Object.entries(record);
-    if (!entries.length) return { error: 'Add at least one field to the record.' };
-    return { statement: `INSERT INTO ${table} (${entries.map(([key]) => quote(key)).join(', ')}) VALUES (${entries.map(([, value]) => sqlLiteral(value)).join(', ')});` };
-  }
-  if (!keys.length || keys.some(key => selectedJson?.[key] === undefined)) return { error: 'This table has no visible primary key, so a record cannot be updated or deleted safely.' };
-  const where = keys.map(key => selectedJson[key] === null ? `${quote(key)} IS NULL` : `${quote(key)} = ${sqlLiteral(selectedJson[key])}`).join(' AND ');
-  if (action === 'edit') {
-    // Only fields the user actually changed are written, so untouched values (dates, binary, JSON text) are never rewritten.
-    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-    const entries = Object.entries(record).filter(([key, value]) => !keys.includes(key) && !same(value, selectedJson[key]));
-    if (!entries.length) return { error: 'Change at least one non-key field before saving.' };
-    return { statement: `UPDATE ${table} SET ${entries.map(([key, value]) => `${quote(key)} = ${sqlLiteral(value)}`).join(', ')} WHERE ${where};` };
-  }
-  return { statement: `DELETE FROM ${table} WHERE ${where};` };
+// Fields of `edited` that differ from `doc`, and keys of `doc` that were removed. Untouched values are never
+// re-sent, so dates, ObjectIds and timestamps keep their type.
+function diffDocument(idKey, doc, edited) {
+  const changes = {};
+  const unset = [];
+  for (const [key, value] of Object.entries(edited)) if (key !== idKey && (!(key in doc) || !same(value, doc[key]))) changes[key] = value;
+  for (const key of Object.keys(doc)) if (key !== idKey && !(key in edited)) unset.push(key);
+  return { changes, unset };
 }
 
-// A typed `find <collection>` / `read <collection>` still tells us which collection is being edited.
+const isBlank = value => value === undefined || value === null || value === '';
+const NO_ID = { error: 'The selected record does not include an identifier needed for this operation.' };
+
+// Builds the structured operation for an insert / edit / delete (the main process turns it into a parameterized
+// statement or driver call). Returns { op } or { error }.
+export function buildRecordOp({ active, object, action, record, selectedJson }) {
+  const verb = { insert: 'insert', edit: 'update', delete: 'delete' }[action];
+  const target = objectRef(object);
+
+  if (active.type === 'mongodb' || active.type === 'firestore') {
+    const idKey = active.type === 'firestore' ? 'id' : '_id';
+    if (action === 'insert') {
+      if (active.type === 'mongodb') return { op: { action: 'insert', object: target, record } };
+      const { id, ...data } = record;
+      return { op: { action: 'insert', object: target, id: id || undefined, record: data } };
+    }
+    const docId = selectedJson?.[idKey] ?? record[idKey];
+    if (isBlank(docId)) return NO_ID;
+    if (action === 'delete') return { op: { action: 'delete', object: target, id: docId } };
+    return buildDocumentUpdate({ active, object, doc: selectedJson || {}, edited: record });
+  }
+
+  if (isRestSupabase(active)) {
+    const keyColumn = object.primaryKey?.[0] || 'id';
+    if (action === 'insert') return { op: { action: 'insert', object: target, record } };
+    const id = selectedJson?.[keyColumn] ?? record[keyColumn];
+    if (isBlank(id)) return NO_ID;
+    if (action === 'delete') return { op: { action: 'delete', object: target, keyColumn, id } };
+    const { changes } = diffDocument(keyColumn, selectedJson || {}, record);
+    if (!Object.keys(changes).length) return { error: 'Change at least one field before saving.' };
+    return { op: { action: 'update', object: target, keyColumn, id, changes } };
+  }
+
+  // SQL: rows are located by their primary key.
+  if (action === 'insert') {
+    if (!Object.keys(record).length) return { error: 'Add at least one field to the record.' };
+    return { op: { action: 'insert', object: target, record } };
+  }
+  const keys = object.primaryKey || [];
+  if (!keys.length || keys.some(key => selectedJson?.[key] === undefined)) return { error: 'This table has no visible primary key, so a record cannot be updated or deleted safely.' };
+  const key = Object.fromEntries(keys.map(name => [name, selectedJson[name]]));
+  if (action === 'delete') return { op: { action: 'delete', object: target, key } };
+  const changes = Object.fromEntries(Object.entries(record).filter(([name, value]) => !keys.includes(name) && !same(value, selectedJson[name])));
+  if (!Object.keys(changes).length) return { error: 'Change at least one non-key field before saving.' };
+  return { op: { action: verb, object: target, key, changes } };
+}
+
+// A typed `find <collection>` / `read <collection>` / `REST: <table>` still tells us which object is being edited.
 export function inferObject(active, query) {
   if (isRestSupabase(active)) {
     const rest = /^\s*REST:\s*([A-Za-z0-9_.-]+)/i.exec(query || '');
@@ -87,24 +87,13 @@ export function inferObject(active, query) {
 }
 
 // Update for one edited document. Only changed fields are sent, so untouched values (dates, ObjectIds) keep their type.
-// Returns { statement }, { noChange: true } or { error }.
+// Returns { op }, { noChange: true } or { error }.
 export function buildDocumentUpdate({ active, object, doc, edited }) {
   const idKey = active.type === 'firestore' ? 'id' : '_id';
   const docId = doc?.[idKey];
-  if (!docId) return { error: 'This document has no identifier.' };
+  if (isBlank(docId)) return { error: 'This document has no identifier.' };
   if (edited[idKey] !== undefined && String(edited[idKey]) !== String(docId)) return { error: `${idKey} cannot be changed.` };
-  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  const changed = {};
-  const removed = [];
-  for (const [key, value] of Object.entries(edited)) if (key !== idKey && (!(key in doc) || !same(value, doc[key]))) changed[key] = value;
-  for (const key of Object.keys(doc)) if (key !== idKey && !(key in edited)) removed.push(key);
-  if (!Object.keys(changed).length && !removed.length) return { noChange: true };
-  if (active.type === 'mongodb') {
-    const update = {};
-    if (Object.keys(changed).length) update.$set = changed;
-    if (removed.length) update.$unset = Object.fromEntries(removed.map(key => [key, '']));
-    return { statement: `update ${object.name} ${encodeId(docId)} ${JSON.stringify(update)}` };
-  }
-  if (removed.length) return { error: 'Removing fields is not supported for Firestore documents.' };
-  return { statement: `update ${object.name} ${encodeId(docId)} ${JSON.stringify(changed)}` };
+  const { changes, unset } = diffDocument(idKey, doc, edited);
+  if (!Object.keys(changes).length && !unset.length) return { noChange: true };
+  return { op: { action: 'update', object: objectRef(object), id: docId, changes, unset } };
 }

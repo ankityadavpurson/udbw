@@ -38,7 +38,7 @@ export default function App() {
     onConnectionLost: id => { conn.markLost(id); tree.clear(); }
   });
   const { tab } = tabsApi;
-  const records = useRecordEditor({ active, tab, runQuery: tabsApi.runQuery, setQuery: tabsApi.setQuery, setStatus });
+  const records = useRecordEditor({ active, tab, runQuery: tabsApi.runQuery, runMutation: tabsApi.runMutation, setQuery: tabsApi.setQuery, setStatus });
   const dialog = useConnectionDialog({
     connected: conn.connected, saveProfile: conn.saveProfile,
     onSaved: (next, existing) => { if (existing && existing.type !== next.type) tabsApi.resetConnectionTabs(next.id, next.type); }

@@ -17,4 +17,9 @@ export const blankTab = {
   view: 'table', viewPinned: false, running: false, selected: [], selectedObject: null
 };
 
+// Saved secrets stay in the main process; the UI holds this placeholder for them and the main process swaps the
+// real value back in. Anything typed over a placeholder replaces the stored secret.
+export const SECRET_FIELDS = ['password', 'apiKey', 'sshPassword', 'sshPassphrase', 'connectionString', 'uri'];
+export const SECRET_MASK = '••••••••';
+
 export const NAV_STORAGE_KEY = 'udw-nav-collapsed';

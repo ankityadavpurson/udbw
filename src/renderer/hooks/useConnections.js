@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { engines } from '../constants.js';
+import { engines, SECRET_FIELDS, SECRET_MASK } from '../constants.js';
+
+// True when the list still holds plaintext secrets (just typed in the dialog) or a duplicate's pointer to its source.
+const needsMasking = profiles => profiles.some(p => p.secretsFrom || SECRET_FIELDS.some(field => p[field] && p[field] !== SECRET_MASK));
 
 // Saved connection profiles, the active selection, live connection state and encrypted persistence.
 export default function useConnections({ setStatus, setBusy }) {
@@ -11,6 +14,8 @@ export default function useConnections({ setStatus, setBusy }) {
   const [loaded, setLoaded] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
   const pendingSaveRef = useRef(false);
+  const latestRef = useRef(null);
+  const saveTimerRef = useRef(null);
 
   const active = profiles.find(p => p.id === activeId);
   const isConnected = Boolean(active && connected.includes(active.id));
@@ -31,15 +36,28 @@ export default function useConnections({ setStatus, setBusy }) {
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    if (!loaded || !storageReady) return;
-    pendingSaveRef.current = true;
-    const timer = setTimeout(() => window.workbench.saveConnections({ profiles, activeId, lastQueries }).then(saved => {
+  // Sends the latest state to the main process, which keeps the secrets and answers with the masked list.
+  function persist() {
+    clearTimeout(saveTimerRef.current);
+    const data = latestRef.current;
+    if (!data) return Promise.resolve();
+    return window.workbench.saveConnections(data).then(saved => {
+      if (saved.profiles && latestRef.current === data && needsMasking(data.profiles)) setProfiles(saved.profiles);
       if (!saved.ok) setStatus(`Could not securely save connections: ${saved.error?.message || 'Unknown error'}`);
       else pendingSaveRef.current = false;
-    }), 250);
-    return () => clearTimeout(timer);
+    });
+  }
+
+  useEffect(() => {
+    if (!loaded || !storageReady) return undefined;
+    latestRef.current = { profiles, activeId, lastQueries };
+    pendingSaveRef.current = true;
+    saveTimerRef.current = setTimeout(persist, 250);
+    return () => clearTimeout(saveTimerRef.current);
   }, [profiles, activeId, lastQueries, loaded, storageReady]);
+
+  // Makes sure the main process has the saved settings before they are used to connect.
+  async function flushSave() { if (pendingSaveRef.current && latestRef.current) await persist(); }
 
   useEffect(() => {
     const onBeforeUnload = event => {
@@ -86,7 +104,7 @@ export default function useConnections({ setStatus, setBusy }) {
   function toggleFavorite(id) { setProfiles(all => all.map(p => p.id === id ? { ...p, favorite: !p.favorite } : p)); }
 
   function duplicateConnection(p) {
-    const copy = { ...p, id: crypto.randomUUID(), name: `${p.name} copy`, favorite: false, lastUsedAt: null };
+    const copy = { ...p, id: crypto.randomUUID(), name: `${p.name} copy`, favorite: false, lastUsedAt: null, secretsFrom: p.id };
     setProfiles(all => [...all, copy]);
     setLastQueries(all => ({ ...all, [copy.id]: lastQueries[p.id] || engines[p.type].query }));
     setStorageReady(true); setStatus(`Duplicated ${p.name}.`);
@@ -107,7 +125,8 @@ export default function useConnections({ setStatus, setBusy }) {
     if (!active || connectionStates[active.id] === 'connecting') return { ok: false };
     const connectionId = active.id;
     setConnectionStates(states => ({ ...states, [connectionId]: 'connecting' })); setBusy(true); setStatus(`Connecting to ${active.name}…`);
-    const res = await window.workbench.connect({ id: connectionId, profile: active }); setBusy(false);
+    await flushSave();
+    const res = await window.workbench.connect({ id: connectionId }); setBusy(false);
     if (res.ok) {
       setConnected(c => c.includes(connectionId) ? c : [...c, connectionId]);
       setConnectionStates(states => ({ ...states, [connectionId]: 'connected' }));

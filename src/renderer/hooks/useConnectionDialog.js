@@ -38,7 +38,7 @@ export default function useConnectionDialog({ connected, saveProfile, onSaved })
     if (problem) return setFormError(problem);
     setTestState('testing'); setFormError('Testing connection…');
     try {
-      const tested = await window.workbench.test({ ...profile, name: profile.name.trim() });
+      const tested = await window.workbench.test({ profile: { ...profile, name: profile.name.trim() }, id: editingId });
       if (tested.ok) { setTestState('success'); setFormError('Connection test succeeded. Save when ready.'); }
       else { setTestState('failed'); setFormError(`Connection test failed: ${tested.error?.message || 'Check the connection settings.'}`); }
     } catch (err) {
