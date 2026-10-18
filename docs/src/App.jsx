@@ -36,8 +36,8 @@ function Home() {
   return (
     <div className="pb-10">
       <section className="py-8">
-        <PageTitle>{SITE}</PageTitle>
-        <p className="mt-1 text-sm font-medium uppercase tracking-widest text-app-muted">{FULL_NAME}</p>
+        <PageTitle>{SITE}<span className="sr-only"> — {FULL_NAME}</span></PageTitle>
+        <p aria-hidden="true" className="mt-1 text-sm font-medium uppercase tracking-widest text-app-muted">{FULL_NAME}</p>
         <div className="mt-3 max-w-2xl text-lg text-app-muted"><Markdown {...routerLink}>{intro.trim()}</Markdown></div>
         <div className="mt-5 flex flex-wrap gap-3">
           <ButtonLink href="/download/" {...routerLink}>Download</ButtonLink>
