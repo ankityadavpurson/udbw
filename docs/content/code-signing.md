@@ -1,15 +1,8 @@
----
-title: Code signing policy
-description: How Universal DB Workbench installers are built and signed.
----
-
 ## Status
 
-Installers are **currently unsigned**. The project is applying for free code signing for open-source projects from SignPath Foundation. Until that is approved, Windows shows "Unknown publisher" for the installer.
+Free code signing will be provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org), once our application is approved.
 
-Once signing is enabled, this page will state:
-
-> Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+Until then, installers are **unsigned** and Windows shows "Unknown publisher". When signing is switched on, the publisher shown on signed installers will be "SignPath Foundation", and this page will be updated to say so.
 
 ## How builds are produced
 
@@ -29,4 +22,4 @@ Contributions from other people are accepted through pull requests and reviewed 
 
 ## Privacy
 
-See the [privacy policy]({{ '/privacy/' | relative_url }}).
+See the [privacy policy](/privacy/).

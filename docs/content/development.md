@@ -1,8 +1,3 @@
----
-title: Development
-description: Building from source, tests, CI/CD and releases.
----
-
 ## Requirements
 
 - Node.js 20 or newer (22 LTS recommended)
@@ -40,7 +35,7 @@ src/main/connectors/   One file per database plus shared SQL helpers
 src/preload.js         The only API the page can call (window.workbench)
 src/renderer/          The React UI (hooks/ for state, lib/ for pure helpers, components/)
 test/                  Unit tests (test/main, test/renderer) and the end-to-end smoke test (test/e2e)
-docs/                  This website (Jekyll, published with GitHub Pages)
+docs/                  This website (Vite + React + xedonium, published with GitHub Pages)
 ```
 
 The page never sees saved secrets and never builds SQL for edits: it sends structured operations and the main process runs them as parameterized statements or driver calls.
@@ -70,13 +65,22 @@ The first release uses the version in `package.json`. That file is not edited by
 
 ### Signing and updates
 
-Windows and macOS signing read the repository secrets `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`, `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`. Without them the installers are unsigned. See the [code signing policy]({{ '/code-signing/' | relative_url }}).
+Windows and macOS signing read the repository secrets `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`, `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`. Without them the installers are unsigned. See the [code signing policy](/code-signing/).
 
 Updates use `electron-updater`. A release built by the workflow contains update settings that point at this repository's releases.
 
 ## This website
 
-The site lives in the `docs/` folder and is built by GitHub Pages. Edit the Markdown files and push to `main`. The navigation is in `docs/_data/nav.yml`.
+The site lives in the `docs/` folder. It is a small Vite + React app built with [xedonium](https://ankityadavpurson.github.io/xedonium-ui/), the same UI library as the desktop app. Each page is a Markdown file in `docs/content/`, listed in `docs/src/pages.js`.
+
+```bash
+cd docs
+yarn install
+yarn dev        # http://localhost:5173/udbw/
+yarn build      # static site in docs/dist, one HTML file per page
+```
+
+Pushing changes under `docs/` to `main` publishes the site with the `Docs` workflow.
 
 ## Roadmap
 

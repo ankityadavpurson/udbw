@@ -1,8 +1,3 @@
----
-title: Connections
-description: How to connect to each supported database.
----
-
 ## MySQL
 
 Enter host, port (3306 by default), database, username and password.

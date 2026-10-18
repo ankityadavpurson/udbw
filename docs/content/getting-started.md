@@ -1,16 +1,11 @@
----
-title: Get started
-description: Install the app, add a connection and run your first query.
----
-
 ## 1. Install
 
-Download an installer from the [download page]({{ '/download/' | relative_url }}). To run from source instead, see the [development page]({{ '/development/' | relative_url }}).
+Download an installer from the [download page](/download/). To run from source instead, see the [development page](/development/).
 
 ## 2. Add a connection
 
 1. Click **New** in the sidebar.
-2. Pick the database type and fill in the fields. Each type is described under [Connections]({{ '/connections/' | relative_url }}).
+2. Pick the database type and fill in the fields. Each type is described under [Connections](/connections/).
 3. Use **Test** to check the settings, then save.
 4. Optionally mark the connection **Production** (asks before any data change) or **Read-only**.
 

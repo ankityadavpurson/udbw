@@ -6,7 +6,7 @@ import globals from 'globals';
 const unused = ['error', { args: 'after-used', argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none', ignoreRestSiblings: true }];
 
 export default [
-  { ignores: ['dist/**', 'release/**', 'build/**', 'node_modules/**'] },
+  { ignores: ['dist/**', 'release/**', 'build/**', 'node_modules/**', 'docs/**'] },
   js.configs.recommended,
 
   // Electron main process, preload and build scripts: CommonJS on Node.

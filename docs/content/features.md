@@ -1,8 +1,3 @@
----
-title: Features
-description: Browsing, querying, command syntax and export.
----
-
 ## Browsing
 
 - Object browser: databases, schemas, tables, views (including materialized and foreign), sequences, functions and collections. MySQL routines are listed too.
