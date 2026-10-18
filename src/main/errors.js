@@ -7,8 +7,16 @@ function safeError(err) {
 }
 
 const TRANSPORT_CODES = [
-  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', '57P01', '08006', '08001',
-  'PROTOCOL_CONNECTION_LOST', 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR', 'PROTOCOL_ENQUEUE_AFTER_QUIT'
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'EPIPE',
+  '57P01',
+  '08006',
+  '08001',
+  'PROTOCOL_CONNECTION_LOST',
+  'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR',
+  'PROTOCOL_ENQUEUE_AFTER_QUIT'
 ];
 const TRANSPORT_MESSAGE = /connection terminated|server closed the connection|connection lost|socket hang up|not queryable|closed state|Client was closed/i;
 
@@ -21,7 +29,7 @@ function isTransportError(err, type) {
 // Reads can safely be replayed after a reconnect; anything that might write cannot.
 function isReadOnlyQuery(text) {
   const query = String(text || '').trim();
-  if (/;\s*\S/.test(query)) return false;   // several statements
+  if (/;\s*\S/.test(query)) return false; // several statements
   return /^(select|show|describe|desc|find|read|count|distinct|collections|rest:)\b/i.test(query);
 }
 

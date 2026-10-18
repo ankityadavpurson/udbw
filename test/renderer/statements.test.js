@@ -39,7 +39,10 @@ describe('buildRecordOp (SQL)', () => {
     expect(buildRecordOp({ active: mysql, object: { name: 't' }, action: 'delete', record: {}, selectedJson: row }).error).toMatch(/primary key/);
   });
   it('builds inserts and deletes', () => {
-    expect(buildRecordOp({ active: mysql, object: table, action: 'insert', record: { name: 'x' }, selectedJson: null }).op).toMatchObject({ action: 'insert', record: { name: 'x' } });
+    expect(buildRecordOp({ active: mysql, object: table, action: 'insert', record: { name: 'x' }, selectedJson: null }).op).toMatchObject({
+      action: 'insert',
+      record: { name: 'x' }
+    });
     expect(buildRecordOp({ active: mysql, object: table, action: 'insert', record: {}, selectedJson: null }).error).toMatch(/at least one field/);
     expect(buildRecordOp({ active: mysql, object: table, action: 'delete', record: {}, selectedJson: row }).op).toMatchObject({ action: 'delete', key: { id: '1' } });
   });
@@ -59,19 +62,29 @@ describe('buildRecordOp (documents and REST)', () => {
     expect(buildDocumentUpdate({ active: mongo, object: { name: 'c' }, doc: {}, edited: { x: 1 } }).error).toMatch(/no identifier/);
   });
   it('splits the id off a Firestore insert', () => {
-    expect(buildRecordOp({ active: firestore, object: { name: 'c' }, action: 'insert', record: { id: 'abc', a: 1 }, selectedJson: null }).op).toMatchObject({ id: 'abc', record: { a: 1 } });
+    expect(buildRecordOp({ active: firestore, object: { name: 'c' }, action: 'insert', record: { id: 'abc', a: 1 }, selectedJson: null }).op).toMatchObject({
+      id: 'abc',
+      record: { a: 1 }
+    });
   });
   it('uses the table primary key for REST, not a fixed "id"', () => {
     const object = { name: 'items', primaryKey: ['sku'] };
     expect(buildRecordOp({ active: rest, object, action: 'delete', record: {}, selectedJson: { sku: 'x y' } }).op).toMatchObject({ keyColumn: 'sku', id: 'x y' });
-    expect(buildRecordOp({ active: rest, object, action: 'edit', record: { sku: 'x', n: 2 }, selectedJson: { sku: 'x', n: 1 } }).op).toMatchObject({ keyColumn: 'sku', changes: { n: 2 } });
+    expect(buildRecordOp({ active: rest, object, action: 'edit', record: { sku: 'x', n: 2 }, selectedJson: { sku: 'x', n: 1 } }).op).toMatchObject({
+      keyColumn: 'sku',
+      changes: { n: 2 }
+    });
   });
 });
 
 describe('inferObject', () => {
   it.each([
-    [mongo, 'find users', 'users'], [mongo, 'find users {a:1} LIMIT 5', 'users'], [mongo, 'db.users.find({a:1})', 'users'], [mongo, 'db.a.b.find()', 'a.b'],
-    [firestore, 'read users LIMIT 3', 'users'], [rest, 'REST: items LIMIT 5', 'items']
+    [mongo, 'find users', 'users'],
+    [mongo, 'find users {a:1} LIMIT 5', 'users'],
+    [mongo, 'db.users.find({a:1})', 'users'],
+    [mongo, 'db.a.b.find()', 'a.b'],
+    [firestore, 'read users LIMIT 3', 'users'],
+    [rest, 'REST: items LIMIT 5', 'items']
   ])('%o %s', (active, query, name) => expect(inferObject(active, query)?.name).toBe(name));
   it('returns null for other text and engines', () => {
     expect(inferObject(mongo, 'collections')).toBeNull();

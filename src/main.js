@@ -16,7 +16,8 @@ app.on('second-instance', () => {
   const win = windowState.getMainWindow();
   if (!win) return;
   if (win.isMinimized()) win.restore();
-  win.show(); win.focus();
+  win.show();
+  win.focus();
 });
 
 app.whenReady().then(() => {
@@ -26,7 +27,7 @@ app.whenReady().then(() => {
   windowState.createSplash();
   windowState.createWindow();
   logger.info(`Started UDBW ${app.getVersion()} on ${process.platform} (Electron ${process.versions.electron})`);
-  setTimeout(() => checkForUpdates({ silent: true }), 15000);   // only does something in a release build
+  setTimeout(() => checkForUpdates({ silent: true }), 15000); // only does something in a release build
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) windowState.createWindow();
   });

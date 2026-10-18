@@ -5,8 +5,21 @@ import { buildXlsx } from '../../src/renderer/lib/xlsx.js';
 import tokenizeQuery, { languageFor } from '../../src/renderer/lib/tokenize.js';
 import { validateForSave, validateForTest } from '../../src/renderer/lib/validation.js';
 
-const sqlResult = { columns: ['id', 'name'], rows: [['1', 'Ann'], ['2', null]] };
-const documentResult = { columns: ['_id', 'document'], json: [{ _id: 'a', name: 'x', nested: { k: 1 } }, { _id: 'b', other: true }], rows: [] };
+const sqlResult = {
+  columns: ['id', 'name'],
+  rows: [
+    ['1', 'Ann'],
+    ['2', null]
+  ]
+};
+const documentResult = {
+  columns: ['_id', 'document'],
+  json: [
+    { _id: 'a', name: 'x', nested: { k: 1 } },
+    { _id: 'b', other: true }
+  ],
+  rows: []
+};
 
 describe('results', () => {
   it('recognises document results and picks a view', () => {
@@ -17,7 +30,10 @@ describe('results', () => {
   });
   it('builds records from rows on demand', () => {
     expect(recordAt(sqlResult, 1)).toEqual({ id: '2', name: null });
-    expect(toRecords(sqlResult)).toEqual([{ id: '1', name: 'Ann' }, { id: '2', name: null }]);
+    expect(toRecords(sqlResult)).toEqual([
+      { id: '1', name: 'Ann' },
+      { id: '2', name: null }
+    ]);
     expect(toRecords(documentResult)).toBe(documentResult.json);
     expect(recordAt(sqlResult, 9)).toBeUndefined();
   });
@@ -27,12 +43,17 @@ describe('results', () => {
     expect(table.rows[0]).toEqual(['a', 'x', { k: 1 }, undefined]);
   });
   it('summarises a document by its most recognisable scalars', () => {
-    expect(summarizeDocument({ _id: '1', zeta: 1, name: 'Ann', email: 'a@b', nested: {} }, 2)).toEqual([['name', 'Ann'], ['email', 'a@b']]);
+    expect(summarizeDocument({ _id: '1', zeta: 1, name: 'Ann', email: 'a@b', nested: {} }, 2)).toEqual([
+      ['name', 'Ann'],
+      ['email', 'a@b']
+    ]);
   });
 });
 
 describe('exports', () => {
-  afterEach(() => { delete globalThis.window; });
+  afterEach(() => {
+    delete globalThis.window;
+  });
   const capture = () => {
     const saveFile = vi.fn(async () => ({ ok: true, saved: true, path: 'C:/x' }));
     globalThis.window = { workbench: { saveFile } };
@@ -54,13 +75,18 @@ describe('exports', () => {
   it('writes SQL INSERTs with the right quoting and NULLs', async () => {
     const saveFile = capture();
     await exportResult('sql', tab, { type: 'mysql' });
-    expect(saveFile.mock.calls[0][0].text).toBe("INSERT INTO `public`.`users` (`id`, `name`) VALUES ('1', 'Ann');\nINSERT INTO `public`.`users` (`id`, `name`) VALUES ('2', NULL);\n");
+    expect(saveFile.mock.calls[0][0].text).toBe(
+      "INSERT INTO `public`.`users` (`id`, `name`) VALUES ('1', 'Ann');\nINSERT INTO `public`.`users` (`id`, `name`) VALUES ('2', NULL);\n"
+    );
     expect(await exportResult('sql', { ...tab, result: documentResult }, { type: 'mongodb' })).toMatch(/only available for table/);
   });
   it('writes JSON records and an .xlsx workbook', async () => {
     const saveFile = capture();
     await exportResult('json', tab, { type: 'postgres' });
-    expect(JSON.parse(saveFile.mock.calls[0][0].text)).toEqual([{ id: '1', name: 'Ann' }, { id: '2', name: null }]);
+    expect(JSON.parse(saveFile.mock.calls[0][0].text)).toEqual([
+      { id: '1', name: 'Ann' },
+      { id: '2', name: null }
+    ]);
     await exportResult('xlsx', tab, { type: 'postgres' });
     expect(Buffer.from(saveFile.mock.calls[1][0].base64, 'base64').subarray(0, 2).toString()).toBe('PK');
   });
@@ -84,19 +110,28 @@ describe('buildXlsx', () => {
       files[name] = Buffer.from(bytes.subarray(at + 30 + nameLength, at + 30 + nameLength + size)).toString();
       at += 30 + nameLength + size;
     }
-    expect(view.getUint32(at, true)).toBe(0x02014b50);   // the central directory follows
+    expect(view.getUint32(at, true)).toBe(0x02014b50); // the central directory follows
     return files;
   }
   it('produces a zip with the parts Excel expects', () => {
-    const files = unzip(buildXlsx(['id', 'name'], [['1', 'Ann <a&b>'], ['2.5', null]], 'My: sheet'));
+    const files = unzip(
+      buildXlsx(
+        ['id', 'name'],
+        [
+          ['1', 'Ann <a&b>'],
+          ['2.5', null]
+        ],
+        'My: sheet'
+      )
+    );
     expect(Object.keys(files)).toEqual(['[Content_Types].xml', '_rels/.rels', 'xl/workbook.xml', 'xl/_rels/workbook.xml.rels', 'xl/styles.xml', 'xl/worksheets/sheet1.xml']);
     expect(files['xl/workbook.xml']).toContain('name="My  sheet"');
     const sheet = files['xl/worksheets/sheet1.xml'];
-    expect(sheet).toContain('<c r="A2"><v>1</v></c>');      // numbers stay numbers
-    expect(sheet).toContain('Ann &lt;a&amp;b&gt;');         // text is escaped
+    expect(sheet).toContain('<c r="A2"><v>1</v></c>'); // numbers stay numbers
+    expect(sheet).toContain('Ann &lt;a&amp;b&gt;'); // text is escaped
     expect(sheet).toContain('<c r="A3"><v>2.5</v></c>');
-    expect(sheet).not.toContain('r="B3"');                  // NULL leaves the cell empty
-    expect(sheet).toContain('t="inlineStr" s="1"');         // bold header
+    expect(sheet).not.toContain('r="B3"'); // NULL leaves the cell empty
+    expect(sheet).toContain('t="inlineStr" s="1"'); // bold header
   });
   it('keeps numbers with leading zeros as text and names columns past Z', () => {
     const columns = Array.from({ length: 28 }, (_, i) => `c${i}`);
@@ -107,9 +142,12 @@ describe('buildXlsx', () => {
 });
 
 describe('tokenizer', () => {
-  const kinds = (code, language) => tokenizeQuery(code, language)[0].filter(t => t.kind).map(t => `${t.kind}:${t.text.trim()}`);
+  const kinds = (code, language) =>
+    tokenizeQuery(code, language)[0]
+      .filter(t => t.kind)
+      .map(t => `${t.kind}:${t.text.trim()}`);
   it('highlights SQL keywords, strings, numbers and functions', () => {
-    expect(kinds("select count(1), 'x' from t", 'postgres')).toEqual(['keyword:select', 'fn:count', 'number:1', 'string:\'x\'', 'keyword:from']);
+    expect(kinds("select count(1), 'x' from t", 'postgres')).toEqual(['keyword:select', 'fn:count', 'number:1', "string:'x'", 'keyword:from']);
   });
   it('treats # as a comment in MySQL but not in PostgreSQL', () => {
     expect(kinds('a # b', 'mysql')).toEqual(['comment:# b']);
@@ -128,7 +166,20 @@ describe('tokenizer', () => {
 });
 
 describe('validation', () => {
-  const base = { name: 'n', type: 'postgres', host: 'h', port: '5432', database: 'd', username: 'u', connectionString: '', uri: '', restUrl: '', apiKey: '', serviceAccountPath: '', sshEnabled: false };
+  const base = {
+    name: 'n',
+    type: 'postgres',
+    host: 'h',
+    port: '5432',
+    database: 'd',
+    username: 'u',
+    connectionString: '',
+    uri: '',
+    restUrl: '',
+    apiKey: '',
+    serviceAccountPath: '',
+    sshEnabled: false
+  };
   it('accepts a complete profile', () => {
     expect(validateForTest(base)).toBe('');
     expect(validateForSave(base)).toBe('');

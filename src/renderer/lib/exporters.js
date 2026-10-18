@@ -42,10 +42,16 @@ export async function exportResult(format, tab, active) {
   if (format === 'sql' && isDocumentResult(result)) return 'SQL export is only available for table results.';
   let payload;
   let filter;
-  if (format === 'json') { payload = { text: JSON.stringify(toRecords(result), null, 2) }; filter = { name: 'JSON', extensions: ['json'] }; }
-  else if (format === 'csv') { payload = { text: toCsv(result) }; filter = { name: 'CSV', extensions: ['csv'] }; }
-  else if (format === 'sql') { payload = { text: toSqlInserts(result, tab, active) }; filter = { name: 'SQL', extensions: ['sql'] }; }
-  else if (format === 'xlsx') {
+  if (format === 'json') {
+    payload = { text: JSON.stringify(toRecords(result), null, 2) };
+    filter = { name: 'JSON', extensions: ['json'] };
+  } else if (format === 'csv') {
+    payload = { text: toCsv(result) };
+    filter = { name: 'CSV', extensions: ['csv'] };
+  } else if (format === 'sql') {
+    payload = { text: toSqlInserts(result, tab, active) };
+    filter = { name: 'SQL', extensions: ['sql'] };
+  } else if (format === 'xlsx') {
     const { columns, rows } = toTable(result);
     const bytes = buildXlsx(columns, rows, tab.selectedObject?.name || tab.title || 'Results');
     let binary = '';
@@ -61,6 +67,10 @@ export async function exportResult(format, tab, active) {
 // Resolves true when the text was copied.
 export async function copyToClipboard(value) {
   if (value == null) return false;
-  try { await navigator.clipboard.writeText(typeof value === 'string' ? value : JSON.stringify(value, null, 2)); return true; }
-  catch { return false; }
+  try {
+    await navigator.clipboard.writeText(typeof value === 'string' ? value : JSON.stringify(value, null, 2));
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -1,6 +1,25 @@
 import { SQL_KEYWORDS } from './tokenize.js';
 
-const COMMAND_WORDS = ['find', 'count', 'aggregate', 'distinct', 'insert', 'update', 'delete', 'create', 'read', 'collections', 'WHERE', 'AND', 'ORDER BY', 'SORT', 'PROJECT', 'SKIP', 'LIMIT', 'OFFSET'];
+const COMMAND_WORDS = [
+  'find',
+  'count',
+  'aggregate',
+  'distinct',
+  'insert',
+  'update',
+  'delete',
+  'create',
+  'read',
+  'collections',
+  'WHERE',
+  'AND',
+  'ORDER BY',
+  'SORT',
+  'PROJECT',
+  'SKIP',
+  'LIMIT',
+  'OFFSET'
+];
 const SQL_WORDS = [...SQL_KEYWORDS].map(word => word.toUpperCase()).sort();
 const MAX_ITEMS = 12;
 
@@ -37,7 +56,10 @@ export function suggest({ text, caret, language, objects = [], force = false }) 
     const object = tables.find(o => o.name.toLowerCase() === target.toLowerCase());
     if (object) {
       if (!object.columns) return { start, items: [], needColumnsFor: object };
-      const items = object.columns.filter(c => startsWith(c, prefix)).slice(0, MAX_ITEMS * 3).map(label => ({ label, kind: 'column', detail: object.name }));
+      const items = object.columns
+        .filter(c => startsWith(c, prefix))
+        .slice(0, MAX_ITEMS * 3)
+        .map(label => ({ label, kind: 'column', detail: object.name }));
       return { start, items };
     }
     const inSchema = tables.filter(o => (o.schema || '').toLowerCase() === qualifier.toLowerCase() && startsWith(o.name, prefix));
@@ -47,7 +69,13 @@ export function suggest({ text, caret, language, objects = [], force = false }) 
 
   const items = [];
   const seen = new Set();
-  const add = item => { const key = `${item.kind}:${item.label}`; if (!seen.has(key)) { seen.add(key); items.push(item); } };
+  const add = item => {
+    const key = `${item.kind}:${item.label}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      items.push(item);
+    }
+  };
   for (const o of tables) if (startsWith(o.name, prefix)) add({ label: o.name, kind: 'table', detail: o.schema || o.type });
   if (language !== 'command') for (const o of tables) for (const c of o.columns || []) if (startsWith(c, prefix)) add({ label: c, kind: 'column', detail: o.name });
   for (const word of language === 'command' ? COMMAND_WORDS : SQL_WORDS) if (startsWith(word, prefix)) add({ label: word, kind: 'keyword', detail: '' });

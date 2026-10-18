@@ -5,30 +5,48 @@
 // Same length as the input: comments and string / identifier literals become spaces (newlines are kept).
 export function maskSql(sql, dialect = 'postgres') {
   const out = sql.split('');
-  const blank = (from, to) => { for (let k = from; k < to && k < out.length; k++) if (out[k] !== '\n') out[k] = ' '; };
+  const blank = (from, to) => {
+    for (let k = from; k < to && k < out.length; k++) if (out[k] !== '\n') out[k] = ' ';
+  };
   let i = 0;
   while (i < sql.length) {
     const ch = sql[i];
     const next = sql[i + 1];
     if ((ch === '-' && next === '-') || (dialect === 'mysql' && ch === '#')) {
-      let end = sql.indexOf('\n', i); if (end === -1) end = sql.length;
-      blank(i, end); i = end;
+      let end = sql.indexOf('\n', i);
+      if (end === -1) end = sql.length;
+      blank(i, end);
+      i = end;
     } else if (ch === '/' && next === '*') {
-      let end = sql.indexOf('*/', i + 2); end = end === -1 ? sql.length : end + 2;
-      blank(i, end); i = end;
+      let end = sql.indexOf('*/', i + 2);
+      end = end === -1 ? sql.length : end + 2;
+      blank(i, end);
+      i = end;
     } else if (ch === "'" || ch === '"' || ch === '`') {
       let j = i + 1;
       while (j < sql.length) {
-        if (sql[j] === '\\' && dialect === 'mysql' && ch !== '`') { j += 2; continue; }
-        if (sql[j] === ch) { if (sql[j + 1] === ch) { j += 2; continue; } break; }
+        if (sql[j] === '\\' && dialect === 'mysql' && ch !== '`') {
+          j += 2;
+          continue;
+        }
+        if (sql[j] === ch) {
+          if (sql[j + 1] === ch) {
+            j += 2;
+            continue;
+          }
+          break;
+        }
         j++;
       }
-      blank(i, j + 1); i = j + 1;
+      blank(i, j + 1);
+      i = j + 1;
     } else if (ch === '$' && dialect !== 'mysql') {
       const tag = /^\$[A-Za-z_]*\$/.exec(sql.slice(i));
       if (tag) {
-        let end = sql.indexOf(tag[0], i + tag[0].length); end = end === -1 ? sql.length : end + tag[0].length;
-        blank(i, end); i = end;
+        let end = sql.indexOf(tag[0], i + tag[0].length);
+        end = end === -1 ? sql.length : end + tag[0].length;
+        blank(i, end);
+        i = end;
       } else i++;
     } else i++;
   }
@@ -49,7 +67,10 @@ export function splitStatements(sql, dialect) {
     statements.push({ text, start: from + lead, end: from + lead + text.length, regionEnd });
   };
   for (let i = 0; i < masked.length; i++) {
-    if (masked[i] === ';') { push(i, i + 1); from = i + 1; }
+    if (masked[i] === ';') {
+      push(i, i + 1);
+      from = i + 1;
+    }
   }
   push(masked.length, masked.length);
   return statements;
@@ -82,7 +103,8 @@ export function assessStatement(sql, dialect) {
 export function assessCommand(text) {
   const t = text.trim();
   const danger = [];
-  const write = /^(insert|update|delete|create)\b/i.test(t) || /^db\.[\w.-]+\.(insert|update|delete)\w*\(/i.test(t) || /^(INSERT|UPDATE|DELETE)\s/.test(t) || /\$out|\$merge/.test(t);
+  const write =
+    /^(insert|update|delete|create)\b/i.test(t) || /^db\.[\w.-]+\.(insert|update|delete)\w*\(/i.test(t) || /^(INSERT|UPDATE|DELETE)\s/.test(t) || /\$out|\$merge/.test(t);
   if (/\.(deleteMany|updateMany)\(\s*(\{\s*\})?\s*[,)]/i.test(t)) danger.push('This command has an empty filter, so it affects every document.');
   return { write, danger };
 }

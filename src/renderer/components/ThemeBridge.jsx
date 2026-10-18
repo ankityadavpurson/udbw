@@ -5,6 +5,8 @@ import { useTheme } from 'xedonium/theme';
 export default function ThemeBridge() {
   const { activeTheme, setThemeMode } = useTheme();
   useEffect(() => window.workbench.onSetTheme(mode => setThemeMode(mode)), [setThemeMode]);
-  useEffect(() => { window.workbench.reportTheme(activeTheme); }, [activeTheme]);
+  useEffect(() => {
+    window.workbench.reportTheme(activeTheme);
+  }, [activeTheme]);
   return null;
 }

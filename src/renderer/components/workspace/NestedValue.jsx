@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon, Table } from 'xedonium';
 
 const MAX_COLUMNS = 12;
-const MAX_DEPTH = 3;       // deeper levels fall back to JSON text
+const MAX_DEPTH = 3; // deeper levels fall back to JSON text
 
 const isNested = value => value !== null && typeof value === 'object';
 
@@ -12,7 +12,12 @@ function asNested(value) {
   if (typeof value !== 'string' || value.length > 50000) return null;
   const text = value.trim();
   if (!((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']')))) return null;
-  try { const parsed = JSON.parse(text); return isNested(parsed) ? parsed : null; } catch { return null; }
+  try {
+    const parsed = JSON.parse(text);
+    return isNested(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 // Sort / copy value for a cell that may hold nested data.
@@ -51,12 +56,18 @@ export default function NestedValue({ value, depth = 0 }) {
   return (
     <div className="min-w-[10rem]">
       <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)} className="inline-flex items-center gap-1 text-xs text-app-muted hover:text-app-text">
-        <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{open ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>{label}
+        <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{open ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>
+        {label}
       </button>
       {open && (
         <div className="mt-1">
-          <Table className={compact} rowKey="__k" empty="empty" rows={rows}
-            columns={columns.map(column => ({ key: column, header: column, render: row => <NestedValue value={row[column]} depth={depth + 1} /> }))} />
+          <Table
+            className={compact}
+            rowKey="__k"
+            empty="empty"
+            rows={rows}
+            columns={columns.map(column => ({ key: column, header: column, render: row => <NestedValue value={row[column]} depth={depth + 1} /> }))}
+          />
         </div>
       )}
     </div>

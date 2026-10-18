@@ -27,13 +27,20 @@ function resolveSecrets(profile, id = profile.id) {
 function load() {
   const file = storePath();
   try {
-    if (!fs.existsSync(file)) { store = emptyStore(); return { ok: true, ...redactedStore() }; }
+    if (!fs.existsSync(file)) {
+      store = emptyStore();
+      return { ok: true, ...redactedStore() };
+    }
     if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage is unavailable on this device.');
     const saved = JSON.parse(safeStorage.decryptString(Buffer.from(fs.readFileSync(file, 'utf8'), 'base64')));
     const data = Array.isArray(saved) ? { profiles: saved } : saved;
     store = {
-      profiles: data.profiles || [], activeId: data.activeId || null, lastQueries: data.lastQueries || {},
-      tabs: data.tabs || {}, history: data.history || {}, snippets: Array.isArray(data.snippets) ? data.snippets : []
+      profiles: data.profiles || [],
+      activeId: data.activeId || null,
+      lastQueries: data.lastQueries || {},
+      tabs: data.tabs || {},
+      history: data.history || {},
+      snippets: Array.isArray(data.snippets) ? data.snippets : []
     };
     unreadableBackup = null;
     return { ok: true, ...redactedStore() };
@@ -45,8 +52,15 @@ function load() {
         fs.copyFileSync(file, backup);
         unreadableBackup = backup;
       }
-    } catch (_) { backup = null; }
-    return { ok: false, profiles: [], message: `${err?.message || 'Could not read saved connections.'}${backup ? ` A copy of the saved file was kept at ${backup}.` : ''}`, code: err?.code ?? null };
+    } catch (_) {
+      backup = null;
+    }
+    return {
+      ok: false,
+      profiles: [],
+      message: `${err?.message || 'Could not read saved connections.'}${backup ? ` A copy of the saved file was kept at ${backup}.` : ''}`,
+      code: err?.code ?? null
+    };
   }
 }
 
@@ -55,8 +69,12 @@ function load() {
 function save(incoming) {
   if (!Array.isArray(incoming?.profiles)) return { ok: false, profiles: [], error: { message: 'Invalid connection data.' } };
   store = {
-    profiles: incoming.profiles.map(profile => resolveSecrets(profile)), activeId: incoming.activeId || null, lastQueries: incoming.lastQueries || {},
-    tabs: incoming.tabs || {}, history: incoming.history || {}, snippets: Array.isArray(incoming.snippets) ? incoming.snippets : []
+    profiles: incoming.profiles.map(profile => resolveSecrets(profile)),
+    activeId: incoming.activeId || null,
+    lastQueries: incoming.lastQueries || {},
+    tabs: incoming.tabs || {},
+    history: incoming.history || {},
+    snippets: Array.isArray(incoming.snippets) ? incoming.snippets : []
   };
   const profiles = store.profiles.map(redactProfile);
   try {
@@ -68,7 +86,9 @@ function save(incoming) {
     fs.writeFileSync(temp, encrypted, { mode: 0o600 });
     fs.renameSync(temp, file);
     return { ok: true, profiles };
-  } catch (err) { return { ok: false, profiles, error: { message: err?.message || 'Unknown error' } }; }
+  } catch (err) {
+    return { ok: false, profiles, error: { message: err?.message || 'Unknown error' } };
+  }
 }
 
 module.exports = { MASK, SECRET_FIELDS, load, save, getProfile, resolveSecrets, redactProfile };

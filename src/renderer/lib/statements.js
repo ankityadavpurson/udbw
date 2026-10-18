@@ -13,7 +13,7 @@ export function selectStatement(active, object) {
   if (active?.type === 'firestore') return `read ${object.name} LIMIT 100`;
   if (isRestSupabase(active)) return `REST: ${object.name} LIMIT 100`;
   if (active?.type === 'mysql') return `SELECT * FROM \`${object.name.replace(/`/g, '``')}\` LIMIT 100;`;
-  return `SELECT * FROM "${(object.schema ? `${object.schema.replace(/"/g, '""')}"."` : '')}${object.name.replace(/"/g, '""')}" LIMIT 100;`;
+  return `SELECT * FROM "${object.schema ? `${object.schema.replace(/"/g, '""')}"."` : ''}${object.name.replace(/"/g, '""')}" LIMIT 100;`;
 }
 
 // True when the selected row can be edited/deleted for this connection and object.
@@ -72,7 +72,8 @@ export function buildRecordOp({ active, object, action, record, selectedJson }) 
     return { op: { action: 'insert', object: target, record } };
   }
   const keys = object.primaryKey || [];
-  if (!keys.length || keys.some(key => selectedJson?.[key] === undefined)) return { error: 'This table has no visible primary key, so a record cannot be updated or deleted safely.' };
+  if (!keys.length || keys.some(key => selectedJson?.[key] === undefined))
+    return { error: 'This table has no visible primary key, so a record cannot be updated or deleted safely.' };
   const key = Object.fromEntries(keys.map(name => [name, selectedJson[name]]));
   if (action === 'delete') return { op: { action: 'delete', object: target, key } };
   const changes = Object.fromEntries(Object.entries(record).filter(([name, value]) => !keys.includes(name) && !same(value, selectedJson[name])));

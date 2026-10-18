@@ -23,8 +23,11 @@ const notConnected = () => Object.assign(new Error('Not connected.'), { unreacha
 
 async function closeSession(s) {
   if (!s) return;
-  try { await connectorFor(s.type).close(s); }
-  finally { await closeTunnel(s.tunnel); }
+  try {
+    await connectorFor(s.type).close(s);
+  } finally {
+    await closeTunnel(s.tunnel);
+  }
 }
 
 // Resolves a live session object for a (resolved, secrets included) profile.
@@ -41,8 +44,13 @@ async function connectProfile(profile) {
     } else if (profile.type === 'mongodb') s = await require('./connectors/mongodb').connect(dial);
     else if (profile.type === 'firestore') s = await require('./connectors/firestore').connect(dial);
     else throw new Error('Unsupported database type.');
-  } catch (err) { await closeTunnel(tunnel); throw err; }
-  s.profile = { ...profile }; s.dial = dial; s.tunnel = tunnel;
+  } catch (err) {
+    await closeTunnel(tunnel);
+    throw err;
+  }
+  s.profile = { ...profile };
+  s.dial = dial;
+  s.tunnel = tunnel;
   return s;
 }
 
@@ -59,7 +67,9 @@ async function connect(id) {
   try {
     sessions.set(id, await connectProfile(savedProfile(id)));
     lost.delete(id);
-  } finally { connecting.delete(id); }
+  } finally {
+    connecting.delete(id);
+  }
 }
 
 async function disconnect(id) {
@@ -81,24 +91,37 @@ async function liveSession(id) {
   if (existing) return existing;
   if (!lost.has(id)) throw notConnected();
   if (!reconnecting.has(id)) {
-    reconnecting.set(id, (async () => {
-      try {
-        const s = await connectProfile(savedProfile(id));
-        sessions.set(id, s); lost.delete(id);
-        return s;
-      } catch (err) {
-        lost.delete(id);
-        err.unreachable = true;
-        throw err;
-      } finally { reconnecting.delete(id); }
-    })());
+    reconnecting.set(
+      id,
+      (async () => {
+        try {
+          const s = await connectProfile(savedProfile(id));
+          sessions.set(id, s);
+          lost.delete(id);
+          return s;
+        } catch (err) {
+          lost.delete(id);
+          err.unreachable = true;
+          throw err;
+        } finally {
+          reconnecting.delete(id);
+        }
+      })()
+    );
   }
   return reconnecting.get(id);
 }
 
 async function dropSession(id, s) {
-  if (sessions.get(id) === s) { sessions.delete(id); lost.add(id); }
-  try { await closeSession(s); } catch (_) { /* already gone */ }
+  if (sessions.get(id) === s) {
+    sessions.delete(id);
+    lost.add(id);
+  }
+  try {
+    await closeSession(s);
+  } catch (_) {
+    /* already gone */
+  }
 }
 
 // Runs `run(session)`. When the connection turns out to be dead it is dropped, and `retry` (reads only) replays the
@@ -106,16 +129,27 @@ async function dropSession(id, s) {
 async function withSession(id, run, { retry = false } = {}) {
   let s = await liveSession(id);
   s.cancelRequested = false;
-  try { return await run(s); }
-  catch (err) {
-    if (s.cancelRequested) { s.cancelRequested = false; throw Object.assign(new Error('Query cancelled.'), { cancelled: true }); }
+  try {
+    return await run(s);
+  } catch (err) {
+    if (s.cancelRequested) {
+      s.cancelRequested = false;
+      throw Object.assign(new Error('Query cancelled.'), { cancelled: true });
+    }
     if (!isTransportError(err, s.type)) throw err;
     await dropSession(id, s);
-    if (!retry) { err.lost = true; throw err; }
+    if (!retry) {
+      err.lost = true;
+      throw err;
+    }
     s = await liveSession(id);
-    try { return await run(s); }
-    catch (second) {
-      if (isTransportError(second, s.type)) { await dropSession(id, s); second.lost = true; }
+    try {
+      return await run(s);
+    } catch (second) {
+      if (isTransportError(second, s.type)) {
+        await dropSession(id, s);
+        second.lost = true;
+      }
       throw second;
     }
   }
@@ -128,8 +162,12 @@ async function cancel(id) {
   const connector = connectorFor(s.type);
   if (!connector.cancel) return false;
   s.cancelRequested = true;
-  try { return await connector.cancel(s); }
-  catch (err) { s.cancelRequested = false; throw err; }
+  try {
+    return await connector.cancel(s);
+  } catch (err) {
+    s.cancelRequested = false;
+    throw err;
+  }
 }
 
 // PostgreSQL cannot change database on a live connection, so it reconnects; MySQL switches in place.
@@ -137,7 +175,10 @@ async function switchDatabase(id, database) {
   const s = sessions.get(id);
   if (!s) throw notConnected();
   const connector = connectorFor(s.type);
-  if (connector.switchDatabase) { await connector.switchDatabase(s, database); return; }
+  if (connector.switchDatabase) {
+    await connector.switchDatabase(s, database);
+    return;
+  }
   if (s.type !== 'postgres' && s.type !== 'supabase') throw new Error('This database does not support switching databases in a live session.');
   const profile = { ...s.profile, database };
   if (profile.connectionString) {
@@ -152,7 +193,8 @@ async function switchDatabase(id, database) {
 
 async function closeAll() {
   const open = [...sessions.values()];
-  sessions.clear(); lost.clear();
+  sessions.clear();
+  lost.clear();
   await Promise.all(open.map(s => closeSession(s).catch(() => {})));
 }
 

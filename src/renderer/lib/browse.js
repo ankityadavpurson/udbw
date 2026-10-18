@@ -7,8 +7,9 @@ export const PAGE_SIZES = [50, 100, 250, 500];
 const isRestSupabase = active => active?.type === 'supabase' && !active.connectionString;
 
 export function canBrowse(active, object) {
-  if (!active || !object || isRestSupabase(active)) return false;
-  if (active.type === 'mongodb') return object.type === 'collection';
+  if (!active || !object) return false;
+  if (active.type === 'mongodb' || active.type === 'firestore') return object.type === 'collection';
+  if (isRestSupabase(active)) return object.type === 'table';
   if (['mysql', 'postgres', 'supabase'].includes(active.type)) return object.type === 'table' || object.type === 'view';
   return false;
 }
@@ -17,6 +18,14 @@ export function canBrowse(active, object) {
 export function buildBrowseQuery(active, object, state) {
   const { page, pageSize, orderBy, orderDir, where } = state;
   const dir = orderDir === 'desc' ? 'DESC' : 'ASC';
+  if (active.type === 'firestore') {
+    const filter = where.trim();
+    return `read ${object.name}${filter ? ` WHERE ${filter}` : ''}${orderBy ? ` ORDER BY ${orderBy} ${dir}` : ''} LIMIT ${pageSize + 1}${page ? ` OFFSET ${page * pageSize}` : ''}`;
+  }
+  if (isRestSupabase(active)) {
+    const filter = where.trim();
+    return `REST: ${object.name}${filter ? ` WHERE ${filter}` : ''}${orderBy ? ` ORDER BY ${orderBy} ${dir}` : ''} LIMIT ${pageSize + 1}${page ? ` OFFSET ${page * pageSize}` : ''}`;
+  }
   if (active.type === 'mongodb') {
     const filter = where.trim();
     return `find ${object.name}${filter ? ` ${filter}` : ''}${orderBy ? ` SORT ${JSON.stringify({ [orderBy]: dir === 'DESC' ? -1 : 1 })}` : ''}${page ? ` SKIP ${page * pageSize}` : ''} LIMIT ${pageSize + 1}`;

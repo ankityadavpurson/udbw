@@ -4,30 +4,48 @@
 // Same length as the input: comments and string / identifier literals become spaces (newlines are kept).
 function maskSql(sql, dialect = 'postgres') {
   const out = sql.split('');
-  const blank = (from, to) => { for (let k = from; k < to && k < out.length; k++) if (out[k] !== '\n') out[k] = ' '; };
+  const blank = (from, to) => {
+    for (let k = from; k < to && k < out.length; k++) if (out[k] !== '\n') out[k] = ' ';
+  };
   let i = 0;
   while (i < sql.length) {
     const ch = sql[i];
     const next = sql[i + 1];
     if ((ch === '-' && next === '-') || (dialect === 'mysql' && ch === '#')) {
-      let end = sql.indexOf('\n', i); if (end === -1) end = sql.length;
-      blank(i, end); i = end;
+      let end = sql.indexOf('\n', i);
+      if (end === -1) end = sql.length;
+      blank(i, end);
+      i = end;
     } else if (ch === '/' && next === '*') {
-      let end = sql.indexOf('*/', i + 2); end = end === -1 ? sql.length : end + 2;
-      blank(i, end); i = end;
+      let end = sql.indexOf('*/', i + 2);
+      end = end === -1 ? sql.length : end + 2;
+      blank(i, end);
+      i = end;
     } else if (ch === "'" || ch === '"' || ch === '`') {
       let j = i + 1;
       while (j < sql.length) {
-        if (sql[j] === '\\' && dialect === 'mysql' && ch !== '`') { j += 2; continue; }
-        if (sql[j] === ch) { if (sql[j + 1] === ch) { j += 2; continue; } break; }
+        if (sql[j] === '\\' && dialect === 'mysql' && ch !== '`') {
+          j += 2;
+          continue;
+        }
+        if (sql[j] === ch) {
+          if (sql[j + 1] === ch) {
+            j += 2;
+            continue;
+          }
+          break;
+        }
         j++;
       }
-      blank(i, j + 1); i = j + 1;
+      blank(i, j + 1);
+      i = j + 1;
     } else if (ch === '$' && dialect !== 'mysql') {
       const tag = /^\$[A-Za-z_]*\$/.exec(sql.slice(i));
       if (tag) {
-        let end = sql.indexOf(tag[0], i + tag[0].length); end = end === -1 ? sql.length : end + tag[0].length;
-        blank(i, end); i = end;
+        let end = sql.indexOf(tag[0], i + tag[0].length);
+        end = end === -1 ? sql.length : end + tag[0].length;
+        blank(i, end);
+        i = end;
       } else i++;
     } else i++;
   }
@@ -43,7 +61,7 @@ function sqlIsWrite(sql, dialect) {
   if (!masked) return false;
   if (/;/.test(masked)) return true;
   if (!READ_START.test(masked)) return true;
-  return /\binto\b/i.test(masked);   // SELECT ... INTO creates a table / writes a file
+  return /\binto\b/i.test(masked); // SELECT ... INTO creates a table / writes a file
 }
 
 // Appends LIMIT maxRows+1 to a plain single SELECT so a huge table is never pulled in full. Returns null when the
@@ -53,7 +71,12 @@ function capSql(sql, dialect, maxRows) {
   const masked = maskSql(text, dialect).trim();
   if (/;/.test(masked)) return null;
   if (!/^select\b/i.test(masked)) return null;
-  if (/\b(limit|offset|fetch|into|union|intersect|except|procedure)\b/i.test(masked) || /\bfor\s+(update|share|no\s+key)\b/i.test(masked) || /\block\s+in\s+share\s+mode\b/i.test(masked)) return null;
+  if (
+    /\b(limit|offset|fetch|into|union|intersect|except|procedure)\b/i.test(masked) ||
+    /\bfor\s+(update|share|no\s+key)\b/i.test(masked) ||
+    /\block\s+in\s+share\s+mode\b/i.test(masked)
+  )
+    return null;
   return `${text}\nLIMIT ${maxRows + 1}`;
 }
 

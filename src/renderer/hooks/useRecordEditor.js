@@ -28,41 +28,66 @@ export default function useRecordEditor({ active, tab, runQuery, runMutation, se
     if (!selectedObject) return;
     setAction(nextAction);
     setJsonText(nextAction === 'edit' && selectedJson ? JSON.stringify(selectedJson, null, 2) : '{}');
-    setError(''); setEditorOpen(true);
+    setError('');
+    setEditorOpen(true);
   }
 
   async function apply(e) {
     e.preventDefault();
     let record;
-    try { record = JSON.parse(jsonText); if (!record || Array.isArray(record) || typeof record !== 'object') throw new Error(); }
-    catch { setError('Enter a valid JSON object.'); return; }
+    try {
+      record = JSON.parse(jsonText);
+      if (!record || Array.isArray(record) || typeof record !== 'object') throw new Error();
+    } catch {
+      setError('Enter a valid JSON object.');
+      return;
+    }
     const object = selectedObject;
     if (!object) return;
     const built = buildRecordOp({ active, object, action, record, selectedJson });
-    if (built.noChange) { setError('Change at least one field before saving.'); return; }
-    if (built.error) { setError(built.error); return; }
-    setEditorOpen(false); setStatus(`${action === 'insert' ? 'Inserting' : action === 'edit' ? 'Updating' : 'Deleting'} record…`);
+    if (built.noChange) {
+      setError('Change at least one field before saving.');
+      return;
+    }
+    if (built.error) {
+      setError(built.error);
+      return;
+    }
+    setEditorOpen(false);
+    setStatus(`${action === 'insert' ? 'Inserting' : action === 'edit' ? 'Updating' : 'Deleting'} record…`);
     if (await runMutation(built.op)) {
       // A browse tab keeps its page / sort / filter; any other tab is refreshed with a plain select of the object.
       if (tab.browse && tab.query === tab.browse.generated) await runQuery(tab.query);
-      else { const select = selectStatement(active, object); setQuery(select); await runQuery(select); }
+      else {
+        const select = selectStatement(active, object);
+        setQuery(select);
+        await runQuery(select);
+      }
     }
   }
 
   // Deletes every selected row, one statement each, then refreshes the tab's own query.
   async function bulkDelete() {
     if (!selectedObject) return;
-    setBulkBusy(true); setBulkError('');
+    setBulkBusy(true);
+    setBulkError('');
     let failure = '';
     for (const doc of selectedDocs) {
       const built = buildRecordOp({ active, object: selectedObject, action: 'delete', record: {}, selectedJson: doc });
-      if (built.error) { failure = built.error; break; }
+      if (built.error) {
+        failure = built.error;
+        break;
+      }
       setStatus('Deleting records…');
-      if (!(await runMutation(built.op))) { failure = 'A delete was rejected, so the rest were skipped. See the result panel.'; break; }
+      if (!(await runMutation(built.op))) {
+        failure = 'A delete was rejected, so the rest were skipped. See the result panel.';
+        break;
+      }
     }
     await runQuery(tab.query);
     setBulkBusy(false);
-    if (failure) setBulkError(failure); else setBulkOpen(false);
+    if (failure) setBulkError(failure);
+    else setBulkOpen(false);
   }
 
   // Runs a change, then re-runs the tab's own query so filters stay in place.
@@ -78,8 +103,12 @@ export default function useRecordEditor({ active, tab, runQuery, runMutation, se
 
   async function updateDocument(doc, text) {
     let edited;
-    try { edited = JSON.parse(text); if (!edited || Array.isArray(edited) || typeof edited !== 'object') throw new Error(); }
-    catch { return { ok: false, error: 'Enter a valid JSON object.' }; }
+    try {
+      edited = JSON.parse(text);
+      if (!edited || Array.isArray(edited) || typeof edited !== 'object') throw new Error();
+    } catch {
+      return { ok: false, error: 'Enter a valid JSON object.' };
+    }
     if (!selectedObject) return needsCollection;
     const built = buildDocumentUpdate({ active, object: selectedObject, doc, edited });
     if (built.noChange) return { ok: true };
@@ -98,9 +127,30 @@ export default function useRecordEditor({ active, tab, runQuery, runMutation, se
   }
 
   return {
-    selectedObject, updateDocument, deleteDocument, cloneDocument,
-    viewerOpen, setViewerOpen, editorOpen, setEditorOpen, action, jsonText, setJsonText, error,
-    hasSelection, selectedCount, selectedDocs, selectedJson, canEditSelected, canDeleteSelected, openEditor, apply,
-    bulkOpen, setBulkOpen, bulkBusy, bulkError, bulkDelete
+    selectedObject,
+    updateDocument,
+    deleteDocument,
+    cloneDocument,
+    viewerOpen,
+    setViewerOpen,
+    editorOpen,
+    setEditorOpen,
+    action,
+    jsonText,
+    setJsonText,
+    error,
+    hasSelection,
+    selectedCount,
+    selectedDocs,
+    selectedJson,
+    canEditSelected,
+    canDeleteSelected,
+    openEditor,
+    apply,
+    bulkOpen,
+    setBulkOpen,
+    bulkBusy,
+    bulkError,
+    bulkDelete
   };
 }
