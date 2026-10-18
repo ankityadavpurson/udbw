@@ -4,6 +4,7 @@ const fs = require('fs');
 const { logger, logFile } = require('./logger');
 
 // Custom title bar: the native one is hidden and Electron draws only the window buttons, in these colours.
+// The overlay is one pixel shorter than the bar so the bar's bottom border shows under the window buttons.
 const TITLE_BAR = { height: 30, dark: { color: '#1f1f1f', symbolColor: '#ffffff' }, light: { color: '#ffffff', symbolColor: '#151515' } };
 const SPLASH_MIN_MS = 700; // avoid a flash when the UI is ready almost immediately
 const SPLASH_MAX_MS = 15000; // never leave the splash up if the UI fails to report
@@ -122,7 +123,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     show: false,
     titleBarStyle: 'hidden',
-    titleBarOverlay: { ...TITLE_BAR.dark, height: TITLE_BAR.height },
+    titleBarOverlay: { ...TITLE_BAR.dark, height: TITLE_BAR.height - 1 },
     autoHideMenuBar: true, // the menu bar appears on Alt; its shortcuts keep working while hidden
     width: 1440,
     height: 940,
@@ -248,7 +249,7 @@ function applyTheme(theme) {
   const win = getMainWindow();
   if (win && typeof win.setTitleBarOverlay === 'function') {
     try {
-      win.setTitleBarOverlay({ ...TITLE_BAR[theme], height: TITLE_BAR.height });
+      win.setTitleBarOverlay({ ...TITLE_BAR[theme], height: TITLE_BAR.height - 1 });
     } catch (_) {
       /* not supported here */
     }

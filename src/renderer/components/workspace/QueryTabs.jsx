@@ -22,7 +22,7 @@ export default function QueryTabs({ tabs, activeTabId, canAdd, onSelect, onClose
     )
   }));
   return (
-    <Flex gap={1} align="center" className="compact-tabs">
+    <Flex gap={1} align="center" className="compact-tabs shadow-[inset_0_-1px_0_rgb(var(--color-app-border))]">
       <div className="min-w-0 flex-1">
         <Tabs value={activeTabId} onChange={onSelect} items={items} />
       </div>
