@@ -38,7 +38,7 @@ function installCrashHandlers() {
     logger.error('Uncaught exception:', err);
     if (shown) return;
     shown = true;
-    dialog.showErrorBox('Universal DB Workbench', `An unexpected error occurred:\n\n${err?.message || err}\n\nDetails were written to the log (Help → Open log folder).`);
+    dialog.showErrorBox('UDBW', `An unexpected error occurred:\n\n${err?.message || err}\n\nDetails were written to the log (Help → Open log folder).`);
   });
   process.on('unhandledRejection', reason => logger.error('Unhandled promise rejection:', reason));
   app.on('child-process-gone', (_event, details) => logger.error('Child process gone:', details));

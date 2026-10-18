@@ -2,7 +2,7 @@ Get the latest version from the [GitHub releases page](https://github.com/ankity
 
 | System | File |
 | --- | --- |
-| Windows | `Universal-DB-Workbench-Setup-<version>.exe` (installer with an uninstaller) |
+| Windows | `UDBW-Setup-<version>.exe` (installer with an uninstaller) |
 | macOS | `.dmg` (drag to Applications) or `.zip` |
 | Linux | `.AppImage` (make it executable, then run it) |
 

@@ -23,7 +23,7 @@ yarn dev        # Vite dev server with hot reload
 | `yarn lint` / `yarn lint:fix` | ESLint |
 | `yarn format` / `yarn format:check` | Prettier (not enforced yet) |
 | `yarn check` | Lint, tests and a UI build, as CI does |
-| `yarn pack` | Packages an unpacked app into `release/` (quick check of the installer config) |
+| `yarn run pack` | Packages an unpacked app into `release/` (quick check of the installer config) |
 | `yarn dist` | Builds installers for the current operating system into `release/` |
 
 ## Code layout
@@ -73,11 +73,11 @@ Updates use `electron-updater`. A release built by the workflow contains update 
 
 The site lives in the `docs/` folder. It is a small Vite + React app built with [xedonium](https://ankityadavpurson.github.io/xedonium-ui/), the same UI library as the desktop app. Each page is a Markdown file in `docs/content/`, listed in `docs/src/pages.js`.
 
+`docs/` is a Yarn workspace of this repository, so the usual `yarn install` at the root installs it too (one lockfile).
+
 ```bash
-cd docs
-yarn install
-yarn dev        # http://localhost:5173/udbw/
-yarn build      # static site in docs/dist, one HTML file per page
+yarn docs:dev      # http://localhost:5173/udbw/
+yarn docs:build    # static site in docs/dist, one HTML file per page
 ```
 
 Pushing changes under `docs/` to `main` publishes the site with the `Docs` workflow.

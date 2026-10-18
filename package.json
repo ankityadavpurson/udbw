@@ -1,5 +1,5 @@
 {
-  "name": "universal-db-workbench",
+  "name": "udbw",
   "version": "0.1.0",
   "description": "Cross-platform desktop database workbench for MySQL, PostgreSQL, MongoDB, Supabase and Firebase Firestore",
   "private": true,
@@ -10,10 +10,15 @@
     "node": ">=20"
   },
   "packageManager": "yarn@1.22.22",
+  "workspaces": [
+    "docs"
+  ],
   "scripts": {
     "start": "vite build && electron .",
     "dev": "node scripts/dev.mjs",
     "build:ui": "vite build",
+    "docs:dev": "yarn workspace udbw-docs dev",
+    "docs:build": "yarn workspace udbw-docs build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "electron test/e2e/ui-smoke.cjs",
@@ -55,7 +60,7 @@
   },
   "build": {
     "appId": "dev.universaldb.workbench",
-    "productName": "Universal DB Workbench",
+    "productName": "UDBW",
     "copyright": "Copyright © ${author}",
     "files": [
       "src/main.js",

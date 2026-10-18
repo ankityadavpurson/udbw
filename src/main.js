@@ -25,7 +25,7 @@ app.whenReady().then(() => {
   windowState.buildAppMenu();
   windowState.createSplash();
   windowState.createWindow();
-  logger.info(`Started Universal DB Workbench ${app.getVersion()} on ${process.platform} (Electron ${process.versions.electron})`);
+  logger.info(`Started UDBW ${app.getVersion()} on ${process.platform} (Electron ${process.versions.electron})`);
   setTimeout(() => checkForUpdates({ silent: true }), 15000);   // only does something in a release build
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) windowState.createWindow();

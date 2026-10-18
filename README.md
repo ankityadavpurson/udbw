@@ -1,6 +1,6 @@
-# Universal DB Workbench
+# UDBW — Universal DB Workbench
 
-A cross-platform desktop workbench (Electron + React) for MySQL, PostgreSQL, Supabase, MongoDB and Firebase Firestore.
+UDBW is a cross-platform desktop workbench (Electron + React) for MySQL, PostgreSQL, Supabase, MongoDB and Firebase Firestore.
 
 **Documentation: https://ankityadavpurson.github.io/udbw/**
 
