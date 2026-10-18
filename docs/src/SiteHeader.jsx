@@ -21,6 +21,7 @@ export default function SiteHeader() {
   const wide = useMediaQuery('(min-width: 768px)');
   // The drawer is for small screens: if the window grows past the breakpoint while it is open, close it.
   useEffect(() => { if (wide) setMenu(false); }, [wide]);
+  const onDownloadPage = pathname === '/download/'; // the page already has the download button
   const sections = pages.filter(page => page.nav && page.slug !== 'download');
 
   return (
@@ -36,7 +37,12 @@ export default function SiteHeader() {
           <div className="ml-auto flex items-center gap-1">
             <a href={REPO} className={iconLink} aria-label="UDBW on GitHub" title="UDBW on GitHub"><GithubIcon /></a>
             <div className="hidden md:block"><ThemeToggle variant="toolbar" /></div>
-            <ButtonLink href="/download/" aria-label="Download" title="Download" className="ml-2" {...router}><DownloadIcon /><span className="hidden sm:inline">Download</span></ButtonLink>
+            {!onDownloadPage && (
+              <ButtonLink href="/download/" aria-label="Download" title="Download" className="ml-2" {...router}>
+                <DownloadIcon />
+                <span className="hidden sm:inline">Download</span>
+              </ButtonLink>
+            )}
             <Button variant="flat" className="md:hidden" aria-label="Open menu" onClick={() => setMenu(true)}><MenuIcon /></Button>
           </div>
         </div>
