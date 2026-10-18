@@ -60,10 +60,11 @@ runs them as parameterized statements or driver calls.
 `yarn dist` builds installers for the OS you run it on (Windows NSIS, macOS dmg + zip, Linux AppImage) into `release/`.
 Build each OS on that OS, or let CI do it:
 
-- `.github/workflows/ci.yml` runs lint, unit tests and a UI build on every push and pull request, the UI smoke test on Windows,
-  and a packaging check on all three systems.
-- `.github/workflows/release.yml` runs when you push a tag such as `v0.2.0`. It builds installers on all three systems and
-  attaches them to a draft GitHub release.
+- `.github/workflows/ci.yml` is the one pipeline. Every push and pull request runs lint, unit tests and a UI build, then the UI
+  smoke test on Windows. Pull requests also get a packaging check on all three systems. A push to `main` then works out the
+  next version from the commit messages since the last `v*` tag (`feat!:` or `BREAKING CHANGE:` = major, `feat:` = minor,
+  `fix:`, `perf:`, `revert:` = patch; `docs:`, `chore:` and the like release nothing), tags it, builds installers on all three
+  systems and publishes the GitHub release once all of them are attached. The first release uses the version in `package.json`.
 
 **Code signing** is optional and read from the usual environment variables / repository secrets: `WIN_CSC_LINK` and
 `WIN_CSC_KEY_PASSWORD` (Windows certificate), `MAC_CSC_LINK` and `MAC_CSC_KEY_PASSWORD` (macOS Developer ID certificate),
@@ -73,7 +74,7 @@ for testing but makes Windows SmartScreen and macOS Gatekeeper warn.
 **Updates** use `electron-updater`. A release built by the workflow contains the update settings (they point at the GitHub
 releases of the repository the workflow runs in), and the app then checks for updates a few seconds after start and under
 Help → Check for updates. Builds made on your machine have no update settings and say so. For a private repository the app also
-needs a read token; see the electron-updater documentation. Publish a release (not a draft) for users to receive it.
+needs a read token; see the electron-updater documentation. The pipeline publishes the release itself, so users receive it without any manual step.
 
 ## Connection setup
 

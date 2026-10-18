@@ -1,9 +1,23 @@
-name: CI
+name: CI/CD
 
+# One pipeline: check -> e2e -> version -> build -> publish.
+# Pull requests run check, e2e and a packaging smoke test only.
+# Every push to main also releases when there is something to release. The next version comes from the Conventional
+# Commit messages since the latest v* tag:
+#   feat!: / fix!: / a "BREAKING CHANGE:" footer  -> major     feat: -> minor     fix: / perf: / revert: -> patch
+# Other types (docs, chore, refactor, test, ci, style, build) do not release by themselves. The first release uses the
+# version in package.json. package.json is not edited: the version is injected at build time.
+# Signing is optional: without the secrets below the installers are built unsigned.
+#   WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD     Windows code-signing certificate (.pfx, base64 or URL) and its password
+#   MAC_CSC_LINK / MAC_CSC_KEY_PASSWORD     macOS "Developer ID Application" certificate (.p12, base64 or URL) and password
+#   APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID   macOS notarization
 on:
   push:
     branches: [main]
   pull_request:
+
+permissions:
+  contents: write
 
 jobs:
   check:
@@ -35,7 +49,8 @@ jobs:
       - run: yarn test:e2e
 
   package:
-    name: Package (${{ matrix.os }})
+    name: Package check (${{ matrix.os }})
+    if: github.event_name == 'pull_request'
     runs-on: ${{ matrix.os }}
     needs: check
     strategy:
@@ -52,3 +67,97 @@ jobs:
           cache: yarn
       - run: yarn install --frozen-lockfile
       - run: yarn pack
+
+  version:
+    name: Detect version
+    if: github.event_name == 'push'
+    needs: [check, e2e]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.detect.outputs.version }}
+      release: ${{ steps.detect.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        run: |
+          set -eu
+          last=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)
+          if [ -z "$last" ]; then
+            version=$(node -p "require('./package.json').version")
+            echo "No earlier release: using package.json version $version"
+          else
+            bump=none
+            for sha in $(git rev-list "$last..HEAD"); do
+              subject=$(git log -1 --format=%s "$sha")
+              body=$(git log -1 --format=%b "$sha")
+              if echo "$subject" | grep -Eq '^[a-z]+(\([^)]*\))?!:' || echo "$body" | grep -Eq '^BREAKING[ -]CHANGE:'; then bump=major
+              elif echo "$subject" | grep -Eq '^feat(\([^)]*\))?:'; then [ "$bump" = major ] || bump=minor
+              elif echo "$subject" | grep -Eq '^(fix|perf|revert)(\([^)]*\))?:'; then [ "$bump" = none ] && bump=patch || true
+              fi
+            done
+            if [ "$bump" = none ]; then
+              echo "No feat/fix/perf/breaking commits since $last; nothing to release."
+              echo "release=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            IFS=. read -r major minor patch <<< "${last#v}"
+            case "$bump" in
+              major) version="$((major + 1)).0.0" ;;
+              minor) version="$major.$((minor + 1)).0" ;;
+              patch) version="$major.$minor.$((patch + 1))" ;;
+            esac
+            echo "$bump bump from $last"
+          fi
+          echo "Next version: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"; echo "release=true" >> "$GITHUB_OUTPUT"
+          git tag "v$version" && git push origin "v$version"
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.version.outputs.version }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: yarn build:ui
+      - name: Package and upload to the draft release
+        # bash on every OS: PowerShell would split the -c.publish.* arguments. The publish settings make
+        # electron-builder write app-update.yml, which turns on in-app updates.
+        shell: bash
+        run: |
+          # An empty CSC_LINK would be read as a path, so signing variables are only exported when a secret is set.
+          if [ "$RUNNER_OS" = "macOS" ]; then link="$MAC_CSC_LINK"; password="$MAC_CSC_KEY_PASSWORD"; else link="$WIN_CSC_LINK"; password="$WIN_CSC_KEY_PASSWORD"; fi
+          if [ -n "$link" ]; then export CSC_LINK="$link" CSC_KEY_PASSWORD="$password"; else export CSC_IDENTITY_AUTO_DISCOVERY=false; fi
+          npx electron-builder --publish always -c.extraMetadata.version=${{ needs.version.outputs.version }} -c.publish.provider=github -c.publish.owner=${{ github.repository_owner }} -c.publish.repo=${{ github.event.repository.name }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+  publish:
+    name: Publish release
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      # Only after all three installers are attached, so in-app updates never see a half-finished release.
+      - name: Publish the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "v${{ needs.version.outputs.version }}" --repo "${{ github.repository }}" --draft=false --latest
