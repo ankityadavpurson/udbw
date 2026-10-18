@@ -13,28 +13,57 @@ require(path.join(root, 'src', 'main.js'));
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const results = [];
-const check = (name, ok, detail = '') => { results.push({ name, ok: Boolean(ok), detail }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok || !detail ? '' : `  (${detail})`}`); };
+const check = (name, ok, detail = '') => {
+  results.push({ name, ok: Boolean(ok), detail });
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok || !detail ? '' : `  (${detail})`}`);
+};
 
 // ---- a fake database ---------------------------------------------------------------------------------------------
 const received = [];
 const columns = ['id', 'name', 'note'];
 const makeRows = n => Array.from({ length: n }, (_, i) => [String(i + 1), `user ${i + 1}`, i % 7 === 0 ? null : `note ${i + 1}`]);
 const fake = {
-  async connect() { return { type: 'mysql', client: {} }; },
+  async connect() {
+    return { type: 'mysql', client: {} };
+  },
   async close() {},
   async query(_session, text, { maxRows } = {}) {
     received.push({ kind: 'query', text, maxRows });
-    if (/sleep/i.test(text)) await new Promise((resolve, reject) => { fake.interrupt = () => reject(new Error('Query execution was interrupted')); setTimeout(resolve, 5000); });
+    if (/sleep/i.test(text))
+      await new Promise((resolve, reject) => {
+        fake.interrupt = () => reject(new Error('Query execution was interrupted'));
+        setTimeout(resolve, 5000);
+      });
     const limit = /LIMIT (\d+)/i.exec(text);
     const all = makeRows(limit ? Number(limit[1]) : 5000);
     const truncated = all.length > maxRows;
     const rows = truncated ? all.slice(0, maxRows) : all;
     return { columns, rows, rowCount: rows.length, truncated, maxRows, message: `${rows.length} rows returned` };
   },
-  async mutate(_session, op) { received.push({ kind: 'mutate', op }); return { columns: [], rows: [], rowCount: 1, message: 'Updated 1 row(s)' }; },
-  async cancel() { received.push({ kind: 'cancel' }); fake.interrupt?.(); return true; },
-  async discover() { return { databases: ['shop'], schemas: ['shop'], message: '', objects: [{ name: 'users', schema: 'shop', type: 'table' }, { name: 'orders', schema: 'shop', type: 'table' }] }; },
-  async describe(_session, object) { received.push({ kind: 'describe', object: object.name }); return { columns, columnInfo: [], primaryKey: ['id'], indexes: [] }; },
+  async mutate(_session, op) {
+    received.push({ kind: 'mutate', op });
+    return { columns: [], rows: [], rowCount: 1, message: 'Updated 1 row(s)' };
+  },
+  async cancel() {
+    received.push({ kind: 'cancel' });
+    fake.interrupt?.();
+    return true;
+  },
+  async discover() {
+    return {
+      databases: ['shop'],
+      schemas: ['shop'],
+      message: '',
+      objects: [
+        { name: 'users', schema: 'shop', type: 'table' },
+        { name: 'orders', schema: 'shop', type: 'table' }
+      ]
+    };
+  },
+  async describe(_session, object) {
+    received.push({ kind: 'describe', object: object.name });
+    return { columns, columnInfo: [], primaryKey: ['id'], indexes: [] };
+  },
   async switchDatabase() {},
   isWrite: text => !/^\s*(select|show|describe|explain)/i.test(text)
 };
@@ -44,15 +73,31 @@ require.cache[fakePath] = { id: fakePath, filename: fakePath, loaded: true, expo
 app.whenReady().then(async () => {
   try {
     let win;
-    for (let i = 0; i < 100 && !win; i++) { await sleep(100); win = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('index.html')); }
+    for (let i = 0; i < 100 && !win; i++) {
+      await sleep(100);
+      win = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('index.html'));
+    }
     if (!win) throw new Error('the main window never loaded (did you run `yarn build:ui`?)');
     const problems = [];
-    win.webContents.on('console-message', (_event, level, message) => { if (level >= 2 || /Content Security|Uncaught/.test(message)) problems.push(message); });
+    win.webContents.on('console-message', (_event, level, message) => {
+      if (level >= 2 || /Content Security|Uncaught/.test(message)) problems.push(message);
+    });
     const run = code => win.webContents.executeJavaScript(code);
     await sleep(1500);
 
     // The page talks to the main process only through window.workbench, and secrets stay masked.
-    const profile = { id: 'p1', name: 'Shop DB', type: 'mysql', host: 'h', port: '3306', database: 'shop', username: 'u', password: 'pw', environment: 'production', readOnly: false };
+    const profile = {
+      id: 'p1',
+      name: 'Shop DB',
+      type: 'mysql',
+      host: 'h',
+      port: '3306',
+      database: 'shop',
+      username: 'u',
+      password: 'pw',
+      environment: 'production',
+      readOnly: false
+    };
     const saved = await run(`window.workbench.saveConnections(${JSON.stringify({ profiles: [profile], activeId: 'p1', lastQueries: {} })})`);
     check('connections save', saved.ok && saved.profiles[0].password !== 'pw');
     win.webContents.reload();
@@ -76,7 +121,10 @@ app.whenReady().then(async () => {
 
     await run(`window.__t.click('users')`);
     await sleep(1500);
-    check('opening a table loads its columns first', received.some(r => r.kind === 'describe' && r.object === 'users'));
+    check(
+      'opening a table loads its columns first',
+      received.some(r => r.kind === 'describe' && r.object === 'users')
+    );
     check('and browses page 1 with one extra row', lastQuery()?.text === 'SELECT * FROM `shop`.`users` LIMIT 101 OFFSET 0;', lastQuery()?.text);
     const page = await text();
     check('the page shows 100 rows and a page indicator', /Page 1/.test(page) && /user 100/.test(page) && !/user 101\b/.test(page));
@@ -103,7 +151,10 @@ app.whenReady().then(async () => {
     check('a DROP on production asks first and sends nothing yet', /run anyway/i.test(await text()) && received.length === sentBefore);
     await run(`window.__t.buttons().find(b => /run anyway/i.test(b.textContent))?.click()`);
     await sleep(700);
-    check('confirming sends it', received.some(r => r.kind === 'query' && /drop table/i.test(r.text)));
+    check(
+      'confirming sends it',
+      received.some(r => r.kind === 'query' && /drop table/i.test(r.text))
+    );
 
     await run(`window.__t.setEditor("select sleep")`);
     await sleep(200);
@@ -137,6 +188,8 @@ app.whenReady().then(async () => {
   } finally {
     const failed = results.filter(r => !r.ok).length;
     console.log(`\n${results.length - failed} passed, ${failed} failed`);
-    setTimeout(() => { app.exit(failed ? 1 : 0); }, 200);
+    setTimeout(() => {
+      app.exit(failed ? 1 : 0);
+    }, 200);
   }
 });

@@ -22,8 +22,11 @@ function handle(channel, fn) {
 
 // Wraps a handler body: { ok: true, ...body } on success, { ok: false, error } on any failure.
 const attempt = async work => {
-  try { return { ok: true, ...(await work()) }; }
-  catch (err) { return { ok: false, error: safeError(err) }; }
+  try {
+    return { ok: true, ...(await work()) };
+  } catch (err) {
+    return { ok: false, error: safeError(err) };
+  }
 };
 
 const DEFAULT_MAX_ROWS = 1000;
@@ -31,16 +34,22 @@ const MAX_ROWS = 100000;
 const rowLimit = value => (Number.isFinite(Number(value)) && Number(value) > 0 ? Math.min(Math.floor(Number(value)), MAX_ROWS) : DEFAULT_MAX_ROWS);
 
 function registerIpc() {
-  ipcMain.on('app:ready', event => { if (fromMainWindow(event)) windowState.revealMainWindow(); });
+  ipcMain.on('app:ready', event => {
+    if (fromMainWindow(event)) windowState.revealMainWindow();
+  });
   // Errors from the page itself (they never carry query results, only the message and stack).
   ipcMain.on('log:renderer', (event, entry) => {
     if (fromMainWindow(event)) logger.error('[renderer]', String(entry?.message || '').slice(0, 1000), String(entry?.stack || '').slice(0, 3000));
   });
-  ipcMain.on('theme:report', (event, theme) => { if (fromMainWindow(event)) windowState.applyTheme(theme); });
+  ipcMain.on('theme:report', (event, theme) => {
+    if (fromMainWindow(event)) windowState.applyTheme(theme);
+  });
 
   handle('db:pick-service-account', async () => {
     const result = await dialog.showOpenDialog(windowState.getMainWindow(), {
-      title: 'Choose Firebase service-account JSON', properties: ['openFile'], filters: [{ name: 'JSON files', extensions: ['json'] }]
+      title: 'Choose Firebase service-account JSON',
+      properties: ['openFile'],
+      filters: [{ name: 'JSON files', extensions: ['json'] }]
     });
     return result.canceled ? null : result.filePaths[0] || null;
   });
@@ -49,19 +58,24 @@ function registerIpc() {
   handle('file:save', async ({ defaultName, filters, text, base64 }) => {
     const name = path.basename(String(defaultName || 'export.txt')).replace(/[<>:"/\\|?*]/g, '_');
     const result = await dialog.showSaveDialog(windowState.getMainWindow(), {
-      title: 'Save export', defaultPath: path.join(app.getPath('downloads'), name),
+      title: 'Save export',
+      defaultPath: path.join(app.getPath('downloads'), name),
       filters: Array.isArray(filters) && filters.length ? filters : [{ name: 'All files', extensions: ['*'] }]
     });
     if (result.canceled || !result.filePath) return { ok: true, saved: false };
     try {
       fs.writeFileSync(result.filePath, base64 ? Buffer.from(String(base64), 'base64') : String(text ?? ''));
       return { ok: true, saved: true, path: result.filePath };
-    } catch (err) { return { ok: false, error: { message: err.message } }; }
+    } catch (err) {
+      return { ok: false, error: { message: err.message } };
+    }
   });
 
   handle('db:pick-ssh-key', async () => {
     const result = await dialog.showOpenDialog(windowState.getMainWindow(), {
-      title: 'Choose SSH private key', properties: ['openFile'], filters: [{ name: 'Private key files', extensions: ['pem', 'key', 'ppk', ''] }]
+      title: 'Choose SSH private key',
+      properties: ['openFile'],
+      filters: [{ name: 'Private key files', extensions: ['pem', 'key', 'ppk', ''] }]
     });
     return result.canceled ? null : result.filePaths[0] || null;
   });
@@ -73,53 +87,77 @@ function registerIpc() {
   });
   handle('connections:save', async payload => store.save(payload));
 
-  handle('db:test', ({ profile, id }) => attempt(async () => {
-    try { await sessions.test(profile, id); }
-    catch (err) { logger.warn('[db:test] failed:', err.message); throw err; }
-    return { label: profile.name || profile.type };
-  }));
+  handle('db:test', ({ profile, id }) =>
+    attempt(async () => {
+      try {
+        await sessions.test(profile, id);
+      } catch (err) {
+        logger.warn('[db:test] failed:', err.message);
+        throw err;
+      }
+      return { label: profile.name || profile.type };
+    })
+  );
 
-  handle('db:connect', ({ id }) => attempt(async () => {
-    await sessions.connect(id);
-    return { label: store.getProfile(id)?.name || '' };
-  }));
+  handle('db:connect', ({ id }) =>
+    attempt(async () => {
+      await sessions.connect(id);
+      return { label: store.getProfile(id)?.name || '' };
+    })
+  );
 
   handle('db:disconnect', ({ id }) => attempt(() => sessions.disconnect(id).then(() => ({}))));
 
-  handle('db:discover', ({ id, database, schema }) => attempt(async () => ({
-    result: await sessions.withSession(id, s => sessions.connectorFor(s.type).discover(s, database, schema), { retry: true })
-  })));
+  handle('db:discover', ({ id, database, schema }) =>
+    attempt(async () => ({
+      result: await sessions.withSession(id, s => sessions.connectorFor(s.type).discover(s, database, schema), { retry: true })
+    }))
+  );
 
   handle('db:switch-database', ({ id, database }) => attempt(() => sessions.switchDatabase(id, database).then(() => ({}))));
 
   // Read-only connections are enforced here as well as by the UI (and by a read-only database session where supported).
   const readOnlyError = () => new Error('This connection is read-only. Edit the connection to allow changes.');
 
-  handle('db:query', ({ id, query, maxRows }) => attempt(async () => ({
-    result: await sessions.withSession(id, s => {
-      const connector = sessions.connectorFor(s.type);
-      if (s.profile.readOnly && connector.isWrite(String(query))) throw readOnlyError();
-      return connector.query(s, String(query), { maxRows: rowLimit(maxRows) });
-    }, { retry: isReadOnlyQuery(query) })
-  })));
+  handle('db:query', ({ id, query, maxRows }) =>
+    attempt(async () => ({
+      result: await sessions.withSession(
+        id,
+        s => {
+          const connector = sessions.connectorFor(s.type);
+          if (s.profile.readOnly && connector.isWrite(String(query))) throw readOnlyError();
+          return connector.query(s, String(query), { maxRows: rowLimit(maxRows) });
+        },
+        { retry: isReadOnlyQuery(query) }
+      )
+    }))
+  );
 
   handle('db:cancel', ({ id }) => attempt(async () => ({ cancelled: await sessions.cancel(id) })));
 
   // Columns, primary key and indexes of one table, loaded when it is opened.
-  handle('db:describe', ({ id, object }) => attempt(async () => ({
-    result: await sessions.withSession(id, s => {
-      const connector = sessions.connectorFor(s.type);
-      return connector.describe ? connector.describe(s, object || {}) : {};
-    }, { retry: true })
-  })));
+  handle('db:describe', ({ id, object }) =>
+    attempt(async () => ({
+      result: await sessions.withSession(
+        id,
+        s => {
+          const connector = sessions.connectorFor(s.type);
+          return connector.describe ? connector.describe(s, object || {}) : {};
+        },
+        { retry: true }
+      )
+    }))
+  );
 
   // Structured insert / update / delete from the record editors; values are never assembled into query text.
-  handle('db:mutate', ({ id, op }) => attempt(async () => ({
-    result: await sessions.withSession(id, s => {
-      if (s.profile.readOnly) throw readOnlyError();
-      return sessions.connectorFor(s.type).mutate(s, op || {});
-    })
-  })));
+  handle('db:mutate', ({ id, op }) =>
+    attempt(async () => ({
+      result: await sessions.withSession(id, s => {
+        if (s.profile.readOnly) throw readOnlyError();
+        return sessions.connectorFor(s.type).mutate(s, op || {});
+      })
+    }))
+  );
 }
 
 module.exports = { registerIpc };

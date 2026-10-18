@@ -8,7 +8,13 @@ const { MASK, SECRET_FIELDS, redactProfile, restoreSecrets } = require('../../sr
 
 describe('safeError', () => {
   it('keeps only what the UI needs', () => {
-    expect(safeError(Object.assign(new Error('boom'), { code: 'X1', stack: 'secret', extra: 1 }))).toEqual({ message: 'boom', code: 'X1', lost: false, unreachable: false, cancelled: false });
+    expect(safeError(Object.assign(new Error('boom'), { code: 'X1', stack: 'secret', extra: 1 }))).toEqual({
+      message: 'boom',
+      code: 'X1',
+      lost: false,
+      unreachable: false,
+      cancelled: false
+    });
     expect(safeError(Object.assign(new Error('gone'), { lost: true, unreachable: true, cancelled: true }))).toMatchObject({ lost: true, unreachable: true, cancelled: true });
     expect(safeError('plain').message).toBe('plain');
   });
@@ -27,8 +33,15 @@ describe('isTransportError', () => {
 
 describe('isReadOnlyQuery (safe to replay)', () => {
   it.each([
-    ['select 1', true], ['  SHOW tables;', true], ['find users {}', true], ['count users', true], ['collections', true],
-    ['select 1; delete from t', false], ['insert into t values (1)', false], ['with x as (select 1) delete from t', false], ['delete users 1', false]
+    ['select 1', true],
+    ['  SHOW tables;', true],
+    ['find users {}', true],
+    ['count users', true],
+    ['collections', true],
+    ['select 1; delete from t', false],
+    ['insert into t values (1)', false],
+    ['with x as (select 1) delete from t', false],
+    ['delete users 1', false]
   ])('%s -> %s', (text, expected) => expect(isReadOnlyQuery(text)).toBe(expected));
 });
 

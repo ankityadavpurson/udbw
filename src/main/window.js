@@ -4,14 +4,16 @@ const fs = require('fs');
 const { logger, logFile } = require('./logger');
 
 // Custom title bar: the native one is hidden and Electron draws only the window buttons, in these colours.
+// The overlay is one pixel shorter than the bar so the bar's bottom border shows under the window buttons.
 const TITLE_BAR = { height: 30, dark: { color: '#1f1f1f', symbolColor: '#ffffff' }, light: { color: '#ffffff', symbolColor: '#151515' } };
-const SPLASH_MIN_MS = 700;      // avoid a flash when the UI is ready almost immediately
-const SPLASH_MAX_MS = 15000;    // never leave the splash up if the UI fails to report
+const SPLASH_MIN_MS = 700; // avoid a flash when the UI is ready almost immediately
+const SPLASH_MAX_MS = 15000; // never leave the splash up if the UI fails to report
 
 const root = path.join(__dirname, '..', '..');
 let mainWindow = null;
 let splash = null;
 let splashShownAt = 0;
+let restoredMaximized = false;
 
 const stateFile = () => path.join(app.getPath('userData'), 'window-state.json');
 
@@ -20,13 +22,23 @@ function readWindowState() {
   try {
     const saved = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
     const bounds = {};
-    if (Number.isFinite(saved.width) && Number.isFinite(saved.height)) { bounds.width = Math.max(1000, saved.width); bounds.height = Math.max(680, saved.height); }
+    if (Number.isFinite(saved.width) && Number.isFinite(saved.height)) {
+      bounds.width = Math.max(1000, saved.width);
+      bounds.height = Math.max(680, saved.height);
+    }
     if (Number.isFinite(saved.x) && Number.isFinite(saved.y) && bounds.width) {
-      const visible = screen.getAllDisplays().some(({ workArea: a }) => saved.x < a.x + a.width - 80 && saved.x + bounds.width > a.x + 80 && saved.y >= a.y - 10 && saved.y < a.y + a.height - 80);
-      if (visible) { bounds.x = saved.x; bounds.y = saved.y; }
+      const visible = screen
+        .getAllDisplays()
+        .some(({ workArea: a }) => saved.x < a.x + a.width - 80 && saved.x + bounds.width > a.x + 80 && saved.y >= a.y - 10 && saved.y < a.y + a.height - 80);
+      if (visible) {
+        bounds.x = saved.x;
+        bounds.y = saved.y;
+      }
     }
     return { bounds, maximized: Boolean(saved.maximized) };
-  } catch (_) { return { bounds: {}, maximized: false }; }
+  } catch (_) {
+    return { bounds: {}, maximized: false };
+  }
 }
 
 function trackWindowState(win) {
@@ -34,35 +46,73 @@ function trackWindowState(win) {
   const write = () => {
     if (win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
     const maximized = win.isMaximized();
-    const bounds = maximized ? readWindowState().bounds : win.getNormalBounds();   // keep the restored size while maximized
-    try { fs.writeFileSync(stateFile(), JSON.stringify({ ...bounds, maximized })); } catch (_) { /* not critical */ }
+    const bounds = maximized ? readWindowState().bounds : win.getNormalBounds(); // keep the restored size while maximized
+    try {
+      fs.writeFileSync(stateFile(), JSON.stringify({ ...bounds, maximized }));
+    } catch (_) {
+      /* not critical */
+    }
   };
-  const later = () => { clearTimeout(timer); timer = setTimeout(write, 400); };
-  win.on('resize', later); win.on('move', later); win.on('maximize', later); win.on('unmaximize', later);
-  win.on('close', () => { clearTimeout(timer); write(); });
+  const later = () => {
+    clearTimeout(timer);
+    timer = setTimeout(write, 400);
+  };
+  win.on('resize', later);
+  win.on('move', later);
+  win.on('maximize', later);
+  win.on('unmaximize', later);
+  win.on('close', () => {
+    clearTimeout(timer);
+    write();
+  });
 }
 
 const getMainWindow = () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
 
 function createSplash() {
   splash = new BrowserWindow({
-    width: 420, height: 260, frame: false, resizable: false, maximizable: false, minimizable: false, show: false,
-    alwaysOnTop: true, skipTaskbar: true, backgroundColor: '#252529', title: 'UDBW',
+    width: 420,
+    height: 260,
+    frame: false,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    show: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    backgroundColor: '#252529',
+    title: 'UDBW',
     icon: path.join(root, 'build', 'icon.png'),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
-  splash.once('ready-to-show', () => { if (splash && !splash.isDestroyed()) { splash.show(); splashShownAt = Date.now(); } });
-  splash.on('closed', () => { splash = null; });
+  splash.once('ready-to-show', () => {
+    if (splash && !splash.isDestroyed()) {
+      splash.show();
+      splashShownAt = Date.now();
+    }
+  });
+  splash.on('closed', () => {
+    splash = null;
+  });
   splash.loadFile(path.join(root, 'src', 'splash.html'));
 }
 
 // Reveals the main window and drops the splash, once the UI has loaded its data (or a timeout hit).
+function showMainWindow() {
+  // maximize() on a hidden window also shows it, so it is applied here rather than at creation (else the splash would stay up).
+  if (restoredMaximized) {
+    restoredMaximized = false;
+    mainWindow.maximize();
+  }
+  mainWindow.show();
+}
+
 function revealMainWindow() {
-  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+  if (!mainWindow || mainWindow.isDestroyed() || (!splash && mainWindow.isVisible())) return;
   const wait = splash ? Math.max(0, SPLASH_MIN_MS - (Date.now() - splashShownAt)) : 0;
   setTimeout(() => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.show();
+    showMainWindow();
     if (splash && !splash.isDestroyed()) splash.destroy();
     splash = null;
   }, wait);
@@ -73,8 +123,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     show: false,
     titleBarStyle: 'hidden',
-    titleBarOverlay: { ...TITLE_BAR.dark, height: TITLE_BAR.height },
-    autoHideMenuBar: true,   // the menu bar appears on Alt; its shortcuts keep working while hidden
+    titleBarOverlay: { ...TITLE_BAR.dark, height: TITLE_BAR.height - 1 },
+    autoHideMenuBar: true, // the menu bar appears on Alt; its shortcuts keep working while hidden
     width: 1440,
     height: 940,
     ...restored.bounds,
@@ -92,9 +142,11 @@ function createWindow() {
       allowRunningInsecureContent: false
     }
   });
-  if (restored.maximized) mainWindow.maximize();
+  restoredMaximized = Boolean(restored.maximized);
   trackWindowState(mainWindow);
-  mainWindow.once('ready-to-show', () => { if (!splash) mainWindow.show(); });   // e.g. reopened from the dock
+  mainWindow.once('ready-to-show', () => {
+    if (!splash) showMainWindow();
+  }); // e.g. reopened from the dock
   mainWindow.webContents.on('did-fail-load', revealMainWindow);
   setTimeout(revealMainWindow, SPLASH_MAX_MS);
   // `yarn dev` serves the UI from Vite (hot reload); a packaged app never honours that variable.
@@ -115,8 +167,17 @@ function hardenWebContents() {
     contents.on('render-process-gone', async (_event, details) => {
       logger.error('Renderer process gone:', details);
       if (details.reason === 'clean-exit' || contents.isDestroyed()) return;
-      const choice = await dialog.showMessageBox(getMainWindow() || undefined, { type: 'error', buttons: ['Reload', 'Close'], defaultId: 0, cancelId: 1, title: 'The window stopped working', message: 'The window crashed.', detail: `Reason: ${details.reason}. Details were written to the log.` });
-      if (choice.response === 0 && !contents.isDestroyed()) contents.reload(); else app.quit();
+      const choice = await dialog.showMessageBox(getMainWindow() || undefined, {
+        type: 'error',
+        buttons: ['Reload', 'Close'],
+        defaultId: 0,
+        cancelId: 1,
+        title: 'The window stopped working',
+        message: 'The window crashed.',
+        detail: `Reason: ${details.reason}. Details were written to the log.`
+      });
+      if (choice.response === 0 && !contents.isDestroyed()) contents.reload();
+      else app.quit();
     });
   });
   // No camera, microphone, location etc.; copying text out of the results is the only permission the UI uses.
@@ -124,31 +185,62 @@ function hardenWebContents() {
 }
 
 function showAbout() {
-  dialog.showMessageBox(getMainWindow() || undefined, { type: 'info', title: 'About', message: 'UDBW', detail: `Universal DB Workbench\nVersion ${app.getVersion()}`, buttons: ['OK'] });
+  dialog.showMessageBox(getMainWindow() || undefined, {
+    type: 'info',
+    title: 'About',
+    message: 'UDBW',
+    detail: `Universal DB Workbench\nVersion ${app.getVersion()}`,
+    buttons: ['OK']
+  });
 }
 
 function buildAppMenu(theme = 'dark') {
-  const setTheme = mode => { const win = getMainWindow(); if (win) win.webContents.send('theme:set', mode); };
+  const setTheme = mode => {
+    const win = getMainWindow();
+    if (win) win.webContents.send('theme:set', mode);
+  };
   // Reload and developer tools exist only when running from source; the app binds Ctrl+R itself.
-  const viewMenu = { label: 'View', submenu: [
-    ...(app.isPackaged ? [] : [{ role: 'toggleDevTools' }, { type: 'separator' }]),
-    { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }
-  ] };
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
-    ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
-    { role: 'fileMenu' }, { role: 'editMenu' }, viewMenu,
-    { label: 'Settings', submenu: [{ label: 'Theme', submenu: [
-      { label: 'Light', type: 'radio', checked: theme === 'light', click: () => setTheme('light') },
-      { label: 'Dark', type: 'radio', checked: theme === 'dark', click: () => setTheme('dark') }
-    ] }] },
-    { role: 'windowMenu' },
-    { role: 'help', submenu: [
-      { label: 'Check for updates…', click: () => require('./updater').checkForUpdates() },
-      { label: 'Open log folder', click: () => shell.openPath(path.dirname(logFile())) },
+  const viewMenu = {
+    label: 'View',
+    submenu: [
+      ...(app.isPackaged ? [] : [{ role: 'toggleDevTools' }, { type: 'separator' }]),
+      { role: 'resetZoom' },
+      { role: 'zoomIn' },
+      { role: 'zoomOut' },
       { type: 'separator' },
-      { label: 'About UDBW', click: showAbout }
-    ] }
-  ]));
+      { role: 'togglefullscreen' }
+    ]
+  };
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
+      { role: 'fileMenu' },
+      { role: 'editMenu' },
+      viewMenu,
+      {
+        label: 'Settings',
+        submenu: [
+          {
+            label: 'Theme',
+            submenu: [
+              { label: 'Light', type: 'radio', checked: theme === 'light', click: () => setTheme('light') },
+              { label: 'Dark', type: 'radio', checked: theme === 'dark', click: () => setTheme('dark') }
+            ]
+          }
+        ]
+      },
+      { role: 'windowMenu' },
+      {
+        role: 'help',
+        submenu: [
+          { label: 'Check for updates…', click: () => require('./updater').checkForUpdates() },
+          { label: 'Open log folder', click: () => shell.openPath(path.dirname(logFile())) },
+          { type: 'separator' },
+          { label: 'About UDBW', click: showAbout }
+        ]
+      }
+    ])
+  );
 }
 
 function applyTheme(theme) {
@@ -156,7 +248,11 @@ function applyTheme(theme) {
   buildAppMenu(theme);
   const win = getMainWindow();
   if (win && typeof win.setTitleBarOverlay === 'function') {
-    try { win.setTitleBarOverlay({ ...TITLE_BAR[theme], height: TITLE_BAR.height }); } catch (_) { /* not supported here */ }
+    try {
+      win.setTitleBarOverlay({ ...TITLE_BAR[theme], height: TITLE_BAR.height - 1 });
+    } catch (_) {
+      /* not supported here */
+    }
   }
 }
 

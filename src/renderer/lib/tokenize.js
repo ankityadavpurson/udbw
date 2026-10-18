@@ -1,11 +1,13 @@
 // Tokenizers for the query editor. Each returns one array of { kind, text } segments per line, where
 // kind is one of xedonium's token kinds (comment | string | keyword | tag | attr | number | fn) or null.
 
-export const SQL_KEYWORDS = new Set(`select from where and or not null insert into values update set delete create table alter drop join left right inner
+export const SQL_KEYWORDS = new Set(
+  `select from where and or not null insert into values update set delete create table alter drop join left right inner
 outer full cross on group by order having limit offset as distinct union all in is like ilike between exists case when then else end asc desc
 primary key foreign references index view database schema use show describe explain with returning default true false truncate begin commit
 rollback grant revoke if unique check constraint add column to using natural over partition window rename replace temporary temp cascade
-restrict engine charset collate auto_increment`.split(/\s+/));
+restrict engine charset collate auto_increment`.split(/\s+/)
+);
 
 const COMMANDS = new Set(['find', 'insert', 'update', 'delete', 'collections', 'read', 'create', 'rest:', 'count', 'aggregate', 'distinct']);
 const CLAUSES = new Set(['limit', 'offset', 'skip', 'sort', 'project', 'projection', 'where', 'and', 'order', 'by', 'asc', 'desc', 'true', 'false', 'null']);
@@ -38,8 +40,10 @@ function tokenizeSql(code, dialect) {
     else if (backtick) out.push({ kind: 'attr', text });
     else if (number) out.push({ kind: 'number', text });
     else if (word) {
-      if (paren) { out.push({ kind: 'fn', text: word }); out.push({ kind: null, text: paren }); }
-      else out.push({ kind: SQL_KEYWORDS.has(word.toLowerCase()) ? 'keyword' : null, text: word });
+      if (paren) {
+        out.push({ kind: 'fn', text: word });
+        out.push({ kind: null, text: paren });
+      } else out.push({ kind: SQL_KEYWORDS.has(word.toLowerCase()) ? 'keyword' : null, text: word });
     }
     last = match.index + text.length;
   }
@@ -57,8 +61,10 @@ function tokenizeCommand(code) {
   for (const match of code.matchAll(COMMAND_TOKEN)) {
     if (match.index > last) out.push({ kind: null, text: code.slice(last, match.index) });
     const [text, string, colon, number, word, newline] = match;
-    if (newline) { wordIndex = 0; out.push({ kind: null, text }); }
-    else if (string) {
+    if (newline) {
+      wordIndex = 0;
+      out.push({ kind: null, text });
+    } else if (string) {
       out.push({ kind: colon ? 'attr' : 'string', text: string });
       if (colon) out.push({ kind: null, text: colon });
     } else if (number) out.push({ kind: 'number', text });

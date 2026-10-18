@@ -21,7 +21,7 @@ yarn dev        # Vite dev server with hot reload
 | `yarn test` | Unit tests (Vitest) for the connectors' text handling and the UI helpers |
 | `yarn test:e2e` | Boots the real app against a fake database and drives the UI (needs a display and `yarn build:ui` first) |
 | `yarn lint` / `yarn lint:fix` | ESLint |
-| `yarn format` / `yarn format:check` | Prettier (not enforced yet) |
+| `yarn format` / `yarn format:check` | Prettier (checked in CI) |
 | `yarn check` | Lint, tests and a UI build, as CI does |
 | `yarn run pack` | Packages an unpacked app into `release/` (quick check of the installer config) |
 | `yarn dist` | Builds installers for the current operating system into `release/` |
@@ -84,4 +84,4 @@ Pushing changes under `docs/` to `main` publishes the site with the `Docs` workf
 
 ## Roadmap
 
-Not built yet: browse controls for Firestore and Supabase REST, cancelling MongoDB and Firestore queries, inline cell editing, streaming of very large results, schema diagrams, importing data, enforcing Prettier across the code base, and a plugin SDK.
+Not built yet: inline cell editing, streaming of very large results, schema diagrams, importing data, and a plugin SDK.

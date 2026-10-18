@@ -7,7 +7,7 @@ const { buildSqlMutation, normalizeSqlResult, normalizePgResult, serializeValue 
 
 describe('maskSql', () => {
   it('blanks comments and quoted text but keeps the length', () => {
-    const sql = "select 'a;b', \"c;d\" -- x;y\nfrom t /* z; */";
+    const sql = 'select \'a;b\', "c;d" -- x;y\nfrom t /* z; */';
     const masked = maskSql(sql, 'postgres');
     expect(masked).toHaveLength(sql.length);
     expect(masked).not.toMatch(/[;]/);
@@ -24,10 +24,20 @@ describe('maskSql', () => {
 
 describe('sqlIsWrite', () => {
   it.each([
-    ['select 1', false], ['  -- hi\n select * from t', false], ['show tables', false], ['explain select 1', false],
-    ['with x as (select 1) select * from x', false], ["select ';' as semi", false], ['select 1;', false],
-    ['insert into t values (1)', true], ['delete from t', true], ['drop table t', true], ['select 1; delete from t', true],
-    ['select * into copy from t', true], ['set role admin', true], ['', false]
+    ['select 1', false],
+    ['  -- hi\n select * from t', false],
+    ['show tables', false],
+    ['explain select 1', false],
+    ['with x as (select 1) select * from x', false],
+    ["select ';' as semi", false],
+    ['select 1;', false],
+    ['insert into t values (1)', true],
+    ['delete from t', true],
+    ['drop table t', true],
+    ['select 1; delete from t', true],
+    ['select * into copy from t', true],
+    ['set role admin', true],
+    ['', false]
   ])('%s -> %s', (sql, expected) => expect(sqlIsWrite(sql, 'postgres')).toBe(expected));
 });
 
@@ -37,8 +47,14 @@ describe('capSql', () => {
     expect(capSql('-- c\nselect a from t order by a', 'mysql', 10)).toBe('-- c\nselect a from t order by a\nLIMIT 11');
   });
   it.each([
-    'select * from t limit 5', 'select * from t offset 5', 'select 1; select 2', 'with x as (select 1) select * from x',
-    'select * from a union select * from b', 'select * from t for update', 'insert into t values (1)', 'select * into x from t'
+    'select * from t limit 5',
+    'select * from t offset 5',
+    'select 1; select 2',
+    'with x as (select 1) select * from x',
+    'select * from a union select * from b',
+    'select * from t for update',
+    'insert into t values (1)',
+    'select * into x from t'
   ])('leaves %s alone', sql => expect(capSql(sql, 'postgres', 100)).toBeNull());
   it('ignores the word limit inside a string', () => {
     expect(capSql("select 'limit' from t", 'postgres', 5)).toBe("select 'limit' from t\nLIMIT 6");
@@ -47,7 +63,12 @@ describe('capSql', () => {
 
 describe('buildSqlMutation', () => {
   it('builds a parameterized MySQL update with quoted identifiers and IS NULL keys', () => {
-    const { sql, params } = buildSqlMutation('mysql', { action: 'update', object: { name: 't`x', schema: 'db' }, changes: { a: "o'x", b: { z: 1 }, c: null }, key: { id: '1', k2: null } });
+    const { sql, params } = buildSqlMutation('mysql', {
+      action: 'update',
+      object: { name: 't`x', schema: 'db' },
+      changes: { a: "o'x", b: { z: 1 }, c: null },
+      key: { id: '1', k2: null }
+    });
     expect(sql).toBe('UPDATE `db`.`t``x` SET `a` = ?, `b` = ?, `c` = ? WHERE `id` = ? AND `k2` IS NULL');
     expect(params).toEqual(["o'x", '{"z":1}', null, '1']);
   });
@@ -79,10 +100,21 @@ describe('result shaping', () => {
     expect(serializeValue({ a: 1 })).toBe('{"a":1}');
   });
   it('caps rows and reports truncation (MySQL arrays)', () => {
-    const result = normalizeSqlResult([[1, 'a'], [2, 'b'], [3, 'c']], [{ name: 'id' }, { name: 'n' }], 2);
+    const result = normalizeSqlResult(
+      [
+        [1, 'a'],
+        [2, 'b'],
+        [3, 'c']
+      ],
+      [{ name: 'id' }, { name: 'n' }],
+      2
+    );
     expect(result).toMatchObject({ columns: ['id', 'n'], rowCount: 2, truncated: true, maxRows: 2 });
-    expect(result.rows).toEqual([['1', 'a'], ['2', 'b']]);
-    expect(result.json).toBeUndefined();   // rows are sent once
+    expect(result.rows).toEqual([
+      ['1', 'a'],
+      ['2', 'b']
+    ]);
+    expect(result.json).toBeUndefined(); // rows are sent once
   });
   it('describes write results (MySQL header)', () => {
     expect(normalizeSqlResult({ affectedRows: 3 }, undefined, 10)).toMatchObject({ rowCount: 3, message: '3 row(s) affected' });

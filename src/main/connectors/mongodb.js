@@ -10,7 +10,11 @@ const fromPlain = value => ejson().deserialize(value, { relaxed: true });
 
 // Ids inside text commands are percent-encoded by the UI so spaces and symbols survive; typed plain ids work too.
 function decodeId(value) {
-  try { return decodeURIComponent(value); } catch (_) { return value; }
+  try {
+    return decodeURIComponent(value);
+  } catch (_) {
+    return value;
+  }
 }
 
 // Matches a document by _id whatever its stored type: ObjectId, string or number.
@@ -50,9 +54,15 @@ function balancedEnd(text, pos) {
   let depth = 0;
   for (let i = pos; i < text.length; i++) {
     const ch = text[i];
-    if (ch === '"' || ch === "'") { i = readString(text, i).end - 1; continue; }
+    if (ch === '"' || ch === "'") {
+      i = readString(text, i).end - 1;
+      continue;
+    }
     if (ch === open || ch === '{' || ch === '[') depth++;
-    else if (ch === '}' || ch === ']') { depth--; if (depth === 0) return ch === close ? i + 1 : -1; }
+    else if (ch === '}' || ch === ']') {
+      depth--;
+      if (depth === 0) return ch === close ? i + 1 : -1;
+    }
   }
   return -1;
 }
@@ -71,7 +81,9 @@ function parseKeywordRead(verb, text) {
     rest = rest.slice(field[0].length);
   }
   let pos = 0;
-  const skipSpace = () => { while (/\s/.test(rest[pos] || '')) pos++; };
+  const skipSpace = () => {
+    while (/\s/.test(rest[pos] || '')) pos++;
+  };
   const readValue = () => {
     skipSpace();
     if (rest[pos] !== '{' && rest[pos] !== '[') throw new Error('Expected a { } or [ ] value.');
@@ -82,7 +94,12 @@ function parseKeywordRead(verb, text) {
     return value;
   };
   skipSpace();
-  if (verb === 'aggregate') { out.pipeline = rest[pos] === '[' ? readValue() : []; skipSpace(); if (pos < rest.length) throw new Error(`Unexpected "${rest.slice(pos)}".`); return out; }
+  if (verb === 'aggregate') {
+    out.pipeline = rest[pos] === '[' ? readValue() : [];
+    skipSpace();
+    if (pos < rest.length) throw new Error(`Unexpected "${rest.slice(pos)}".`);
+    return out;
+  }
   if (rest[pos] === '{') out.filter = readValue();
   if (verb === 'find') {
     while (true) {
@@ -101,7 +118,10 @@ function parseKeywordRead(verb, text) {
         out[word.toLowerCase()] = Number(num[0]);
       }
     }
-  } else { skipSpace(); if (pos < rest.length) throw new Error(`Unexpected "${rest.slice(pos)}".`); }
+  } else {
+    skipSpace();
+    if (pos < rest.length) throw new Error(`Unexpected "${rest.slice(pos)}".`);
+  }
   return out;
 }
 
@@ -129,7 +149,8 @@ function parseShell(text) {
   const arg = i => main.args[i];
   const out = { collection };
   switch (main.name) {
-    case 'find': case 'findOne':
+    case 'find':
+    case 'findOne':
       Object.assign(out, { action: 'find', filter: arg(0) || {}, projection: arg(1) });
       if (main.name === 'findOne') out.limit = 1;
       for (const call of chain) {
@@ -140,21 +161,31 @@ function parseShell(text) {
         else throw new Error(`.${call.name}() is not supported after find().`);
       }
       return out;
-    case 'countDocuments': case 'count': return { ...out, action: 'count', filter: arg(0) || {} };
-    case 'aggregate': return { ...out, action: 'aggregate', pipeline: Array.isArray(arg(0)) ? arg(0) : main.args };
-    case 'distinct': return { ...out, action: 'distinct', field: String(arg(0)), filter: arg(1) || {} };
-    case 'insertOne': return { ...out, action: 'insertMany', records: [arg(0)] };
-    case 'insertMany': return { ...out, action: 'insertMany', records: arg(0) };
-    case 'updateOne': case 'updateMany':
+    case 'countDocuments':
+    case 'count':
+      return { ...out, action: 'count', filter: arg(0) || {} };
+    case 'aggregate':
+      return { ...out, action: 'aggregate', pipeline: Array.isArray(arg(0)) ? arg(0) : main.args };
+    case 'distinct':
+      return { ...out, action: 'distinct', field: String(arg(0)), filter: arg(1) || {} };
+    case 'insertOne':
+      return { ...out, action: 'insertMany', records: [arg(0)] };
+    case 'insertMany':
+      return { ...out, action: 'insertMany', records: arg(0) };
+    case 'updateOne':
+    case 'updateMany':
       return { ...out, action: main.name === 'updateOne' ? 'updateOne' : 'updateMany', filter: arg(0) || {}, update: arg(1) };
-    case 'deleteOne': case 'deleteMany':
+    case 'deleteOne':
+    case 'deleteMany':
       return { ...out, action: main.name === 'deleteOne' ? 'deleteOne' : 'deleteMany', filter: arg(0) || {} };
-    default: throw new Error(`db.${collection}.${main.name}() is not supported.`);
+    default:
+      throw new Error(`db.${collection}.${main.name}() is not supported.`);
   }
 }
 const EJSON_ARRAY = args => parseEjson(`[${args}]`);
 
-const HELP = 'MongoDB commands: "collections", find <coll> {filter} SORT {…} SKIP n LIMIT n, count <coll>, aggregate <coll> [ … ], distinct <coll> <field>, or db.<coll>.find({…}).';
+const HELP =
+  'MongoDB commands: "collections", find <coll> {filter} SORT {…} SKIP n LIMIT n, count <coll>, aggregate <coll> [ … ], distinct <coll> <field>, or db.<coll>.find({…}).';
 
 function parseCommand(query) {
   const text = query.trim().replace(/;\s*$/, '');
@@ -181,7 +212,9 @@ function isWrite(text) {
     const parsed = parseCommand(text);
     if (WRITES.has(parsed.action)) return true;
     return parsed.action === 'aggregate' && (parsed.pipeline || []).some(stage => stage && ('$out' in stage || '$merge' in stage));
-  } catch (_) { return false; }   // an unparseable command runs nothing
+  } catch (_) {
+    return false;
+  } // an unparseable command runs nothing
 }
 
 // ---- execution -------------------------------------------------------------------------------------------------
@@ -195,12 +228,26 @@ async function connect(dial) {
     const session = { type: 'mongodb', client, database: dial.database || dbName };
     await client.db(session.database).command({ ping: 1 });
     return session;
-  } catch (err) { await client.close().catch(() => {}); throw err; }
+  } catch (err) {
+    await client.close().catch(() => {});
+    throw err;
+  }
 }
 
-async function close(session) { if (session.client) await session.client.close(); }
+async function close(session) {
+  if (session.client) await session.client.close();
+}
 
-function switchDatabase(session, database) { session.database = database; }
+function switchDatabase(session, database) {
+  session.database = database;
+}
+
+// Aborts the read in flight (the driver stops waiting and asks the server to kill the operation).
+async function cancel(session) {
+  if (!session.abort) return false;
+  session.abort.abort();
+  return true;
+}
 
 // Writes: { action, collection, … } with BSON values already built.
 async function write(session, command) {
@@ -223,13 +270,15 @@ async function write(session, command) {
       const docs = await collection.find(filter).limit(1).toArray();
       return docResult(docs, `Updated ${updated.modifiedCount} document(s)`, updated.modifiedCount);
     }
-    case 'updateOne': case 'updateMany': {
+    case 'updateOne':
+    case 'updateMany': {
       if (!command.update) throw new Error('An update document is required.');
       const update = Object.keys(command.update).some(key => key.startsWith('$')) ? command.update : { $set: command.update };
       const res = await collection[command.action](withIdMatch(command.filter), update);
       return counts(res.modifiedCount, 'Updated');
     }
-    case 'deleteOne': case 'deleteMany': {
+    case 'deleteOne':
+    case 'deleteMany': {
       const res = await collection[command.action](withIdMatch(command.filter));
       return counts(res.deletedCount, 'Deleted');
     }
@@ -248,27 +297,38 @@ async function query(session, text, { maxRows = 1000 } = {}) {
     return { json: names, columns: ['name'], rows: names.map(x => [x.name]), message: `${names.length} collections` };
   }
   const collection = parsed.collection && db.collection(parsed.collection);
+  const controller = new AbortController();
+  const { signal } = controller;
+  session.abort = WRITES.has(parsed.action) ? null : controller; // a write cannot be stopped half-way
+  try {
+    return await read(session, parsed, collection, signal, maxRows);
+  } finally {
+    if (session.abort === controller) session.abort = null;
+  }
+}
+
+async function read(session, parsed, collection, signal, maxRows) {
   if (parsed.action === 'find') {
     const limit = Math.min(parsed.limit ?? maxRows, HARD_LIMIT);
-    let cursor = collection.find(withIdMatch(parsed.filter || {}), parsed.projection ? { projection: parsed.projection } : {});
+    let cursor = collection.find(withIdMatch(parsed.filter || {}), { signal, ...(parsed.projection ? { projection: parsed.projection } : {}) });
     if (parsed.sort) cursor = cursor.sort(parsed.sort);
     if (parsed.skip) cursor = cursor.skip(parsed.skip);
     const docs = await cursor.limit(limit).toArray();
     return docResult(docs, `${docs.length} documents`, docs.length, { truncated: parsed.limit === undefined && docs.length === limit, maxRows });
   }
   if (parsed.action === 'count') {
-    const n = await collection.countDocuments(withIdMatch(parsed.filter || {}));
+    const n = await collection.countDocuments(withIdMatch(parsed.filter || {}), { signal });
     return { columns: ['count'], rows: [[String(n)]], rowCount: 1, message: `${n} matching documents` };
   }
   if (parsed.action === 'distinct') {
-    const values = await collection.distinct(parsed.field, withIdMatch(parsed.filter || {}));
+    const values = await collection.distinct(parsed.field, withIdMatch(parsed.filter || {}), { signal });
     const shown = values.slice(0, maxRows).map(v => (v !== null && typeof v === 'object' ? JSON.stringify(JSON.parse(ejson().stringify(v, { relaxed: true }))) : String(v)));
     return { columns: [parsed.field], rows: shown.map(v => [v]), rowCount: shown.length, truncated: values.length > maxRows, maxRows, message: `${values.length} distinct values` };
   }
   if (parsed.action === 'aggregate') {
     const writes = parsed.pipeline.some(stage => stage && ('$out' in stage || '$merge' in stage));
     const pipeline = writes ? parsed.pipeline : [...parsed.pipeline, { $limit: maxRows + 1 }];
-    const docs = await collection.aggregate(pipeline, { allowDiskUse: true }).toArray();
+    const docs = await collection.aggregate(pipeline, { allowDiskUse: true, signal }).toArray();
     if (writes) return { json: [], columns: [], rows: [], rowCount: 0, message: 'Aggregation written' };
     const truncated = docs.length > maxRows;
     return docResult(truncated ? docs.slice(0, maxRows) : docs, `${Math.min(docs.length, maxRows)} documents`, Math.min(docs.length, maxRows), { truncated, maxRows });
@@ -292,12 +352,17 @@ async function mutate(session, op) {
 
 async function discover(session, database) {
   const adminDb = session.client.db('admin');
-  let databases = [], message = '';
-  try { const listed = await adminDb.admin().listDatabases(); databases = listed.databases.map(d => d.name); }
-  catch { message = 'Your account cannot list databases. Showing objects in the configured database.'; }
+  let databases = [],
+    message = '';
+  try {
+    const listed = await adminDb.admin().listDatabases();
+    databases = listed.databases.map(d => d.name);
+  } catch {
+    message = 'Your account cannot list databases. Showing objects in the configured database.';
+  }
   const selected = database || session.database;
   const collections = await session.client.db(selected).listCollections({}, { nameOnly: false }).toArray();
   return { databases, schemas: [], objects: collections.map(c => ({ name: c.name, type: 'collection', metadata: c.type || '' })), message };
 }
 
-module.exports = { connect, close, query, mutate, switchDatabase, discover, isWrite, parseCommand, idFilter, plain };
+module.exports = { connect, close, query, cancel, mutate, switchDatabase, discover, isWrite, parseCommand, idFilter, plain };

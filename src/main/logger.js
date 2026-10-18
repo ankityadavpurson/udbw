@@ -21,7 +21,9 @@ function write(level, parts) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     if (fs.existsSync(file) && fs.statSync(file).size > MAX_BYTES) fs.renameSync(file, `${file}.1`);
     fs.appendFileSync(file, line);
-  } catch (_) { /* logging must never break the app */ }
+  } catch (_) {
+    /* logging must never break the app */
+  }
   (level === 'error' ? console.error : level === 'warn' ? console.warn : console.log)(line.trimEnd());
 }
 

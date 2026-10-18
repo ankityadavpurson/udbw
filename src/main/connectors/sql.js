@@ -23,7 +23,11 @@ function normalizeSqlResult(rows, fields, maxRows) {
     const affected = rows?.affectedRows;
     return { columns: [], rows: [], message: affected === undefined ? 'Statement executed' : `${affected} row(s) affected`, rowCount: affected ?? 0 };
   }
-  return shape((fields || []).map(f => f.name), rows, maxRows);
+  return shape(
+    (fields || []).map(f => f.name),
+    rows,
+    maxRows
+  );
 }
 
 // pg with rowMode 'array'. A multi-statement text returns one result per statement; the last one is shown.
@@ -31,7 +35,13 @@ function normalizePgResult(result, maxRows) {
   const last = Array.isArray(result) ? result[result.length - 1] : result;
   if (!last) return { columns: [], rows: [], rowCount: 0, message: 'Query completed' };
   const columns = (last.fields || []).map(f => f.name);
-  if (!columns.length) return { columns: [], rows: [], rowCount: last.rowCount, message: last.command ? `${last.command}${last.rowCount == null ? '' : ` · ${last.rowCount} row(s)`}` : 'Query completed' };
+  if (!columns.length)
+    return {
+      columns: [],
+      rows: [],
+      rowCount: last.rowCount,
+      message: last.command ? `${last.command}${last.rowCount == null ? '' : ` · ${last.rowCount} row(s)`}` : 'Query completed'
+    };
   return shape(columns, last.rows || [], maxRows);
 }
 
@@ -41,14 +51,15 @@ const toParam = value => (value === undefined ? null : value !== null && typeof 
 // every value is a bound parameter, so nothing the user typed is ever spliced into the SQL text.
 // op: { action, object: { name, schema? }, record?, changes?, key? }
 function buildSqlMutation(dialect, op) {
-  const quote = dialect === 'mysql'
-    ? value => `\`${String(value).replace(/`/g, '``')}\``
-    : value => `"${String(value).replace(/"/g, '""')}"`;
+  const quote = dialect === 'mysql' ? value => `\`${String(value).replace(/`/g, '``')}\`` : value => `"${String(value).replace(/"/g, '""')}"`;
   const object = op.object || {};
   if (!object.name) throw new Error('No table is selected.');
   const table = `${object.schema ? `${quote(object.schema)}.` : ''}${quote(object.name)}`;
   const params = [];
-  const bind = value => { params.push(toParam(value)); return dialect === 'mysql' ? '?' : `$${params.length}`; };
+  const bind = value => {
+    params.push(toParam(value));
+    return dialect === 'mysql' ? '?' : `$${params.length}`;
+  };
   const where = () => {
     const entries = Object.entries(op.key || {});
     if (!entries.length) throw new Error('This table has no visible primary key, so a record cannot be updated or deleted safely.');

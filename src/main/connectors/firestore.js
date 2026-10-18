@@ -5,7 +5,11 @@ const { relaxedToJson, readString } = require('./relaxed');
 const admin = () => require('firebase-admin');
 
 function decodeId(value) {
-  try { return decodeURIComponent(value); } catch (_) { return value; }
+  try {
+    return decodeURIComponent(value);
+  } catch (_) {
+    return value;
+  }
 }
 
 // Firestore types that JSON cannot carry are shown as { __type, … } objects and turned back into real values on write.
@@ -47,13 +51,22 @@ function docResult(docs, message, rowCount) {
 // Reads one JSON value (string, number, array, object or bare word) at `pos`; returns { text, end }.
 function readValue(text, pos) {
   const ch = text[pos];
-  if (ch === '"' || ch === "'") { const s = readString(text, pos); return { text: text.slice(pos, s.end), end: s.end }; }
+  if (ch === '"' || ch === "'") {
+    const s = readString(text, pos);
+    return { text: text.slice(pos, s.end), end: s.end };
+  }
   if (ch === '[' || ch === '{') {
     let depth = 0;
     for (let i = pos; i < text.length; i++) {
-      if (text[i] === '"' || text[i] === "'") { i = readString(text, i).end - 1; continue; }
+      if (text[i] === '"' || text[i] === "'") {
+        i = readString(text, i).end - 1;
+        continue;
+      }
       if (text[i] === '[' || text[i] === '{') depth++;
-      else if (text[i] === ']' || text[i] === '}') { depth--; if (depth === 0) return { text: text.slice(pos, i + 1), end: i + 1 }; }
+      else if (text[i] === ']' || text[i] === '}') {
+        depth--;
+        if (depth === 0) return { text: text.slice(pos, i + 1), end: i + 1 };
+      }
     }
     throw new Error('Unbalanced brackets in the command.');
   }
@@ -62,13 +75,27 @@ function readValue(text, pos) {
   return { text: word[0], end: pos + word[0].length };
 }
 
-const OPERATORS = { '=': '==', '==': '==', '!=': '!=', '<': '<', '<=': '<=', '>': '>', '>=': '>=', in: 'in', 'not-in': 'not-in', 'array-contains': 'array-contains', 'array-contains-any': 'array-contains-any' };
+const OPERATORS = {
+  '=': '==',
+  '==': '==',
+  '!=': '!=',
+  '<': '<',
+  '<=': '<=',
+  '>': '>',
+  '>=': '>=',
+  in: 'in',
+  'not-in': 'not-in',
+  'array-contains': 'array-contains',
+  'array-contains-any': 'array-contains-any'
+};
 
 // read|count <path> [WHERE field op value [AND …]] [ORDER BY field [ASC|DESC]] [LIMIT n] [OFFSET n]
 function parseQueryClauses(rest) {
   const out = { where: [], orderBy: [] };
   let pos = 0;
-  const skipSpace = () => { while (/\s/.test(rest[pos] || '')) pos++; };
+  const skipSpace = () => {
+    while (/\s/.test(rest[pos] || '')) pos++;
+  };
   while (true) {
     skipSpace();
     if (pos >= rest.length) break;
@@ -102,7 +129,8 @@ function parseQueryClauses(rest) {
 }
 
 const PATH = '[a-zA-Z0-9_./-]+';
-const HELP = 'Firestore commands: "collections [docPath]", read <collection> [WHERE field >= 1] [ORDER BY field DESC] [LIMIT n] [OFFSET n], count <collection> [WHERE …], create/update/delete.';
+const HELP =
+  'Firestore commands: "collections [docPath]", read <collection> [WHERE field >= 1] [ORDER BY field DESC] [LIMIT n] [OFFSET n], count <collection> [WHERE …], create/update/delete.';
 
 function parseCommand(query) {
   const text = query.trim().replace(/;\s*$/, '');
@@ -123,7 +151,13 @@ function parseCommand(query) {
 }
 
 const WRITES = new Set(['insert', 'update', 'delete']);
-const isWrite = text => { try { return WRITES.has(parseCommand(text).action); } catch (_) { return false; } };
+const isWrite = text => {
+  try {
+    return WRITES.has(parseCommand(text).action);
+  } catch (_) {
+    return false;
+  }
+};
 
 async function connect(dial) {
   if (!dial.serviceAccountPath) throw new Error('Select a Firebase service-account JSON file.');
@@ -132,7 +166,12 @@ async function connect(dial) {
   const sdk = admin();
   const app = sdk.initializeApp({ credential: sdk.credential.cert(raw), projectId: dial.projectId || raw.project_id }, appName);
   const session = { type: 'firestore', db: sdk.firestore(app), appName, projectId: dial.projectId || raw.project_id };
-  try { await session.db.listCollections(); } catch (err) { await app.delete().catch(() => {}); throw err; }
+  try {
+    await session.db.listCollections();
+  } catch (err) {
+    await app.delete().catch(() => {});
+    throw err;
+  }
   return session;
 }
 
@@ -166,6 +205,42 @@ async function write(session, command) {
   return docResult([{ id: snap.id, ...encode(snap.data()) }], 'Updated 1 document', 1);
 }
 
+// Reads a query through its stream so that Stop can destroy it (a plain get() cannot be interrupted).
+function readQuery(session, ref) {
+  return new Promise((resolve, reject) => {
+    const docs = [];
+    const stream = ref.stream();
+    let done = false;
+    session.cancelStream = () => {
+      if (!done) {
+        done = true;
+        stream.destroy();
+        reject(new Error('Query cancelled.'));
+      }
+    };
+    stream.on('data', doc => docs.push(doc));
+    stream.on('end', () => {
+      done = true;
+      resolve(docs);
+    });
+    stream.on('error', err => {
+      if (!done) {
+        done = true;
+        reject(err);
+      }
+    });
+  }).finally(() => {
+    session.cancelStream = null;
+  });
+}
+
+// Stops the read in flight; the request is dropped, though the server may still finish it.
+async function cancel(session) {
+  if (!session.cancelStream) return false;
+  session.cancelStream();
+  return true;
+}
+
 const segments = path => path.split('/').filter(Boolean);
 
 async function query(session, text, { maxRows = 1000 } = {}) {
@@ -184,7 +259,8 @@ async function query(session, text, { maxRows = 1000 } = {}) {
     return docResult(docs, snap.exists ? '1 document' : 'Document not found', docs.length);
   }
   let ref = session.db.collection(parsed.path);
-  for (const clause of parsed.where) ref = ref.where(clause.field === '__name__' ? admin().firestore.FieldPath.documentId() : clause.field, clause.op, decode(clause.value, session.db));
+  for (const clause of parsed.where)
+    ref = ref.where(clause.field === '__name__' ? admin().firestore.FieldPath.documentId() : clause.field, clause.op, decode(clause.value, session.db));
   if (parsed.action === 'count') {
     const snap = await ref.count().get();
     const n = snap.data().count;
@@ -193,8 +269,8 @@ async function query(session, text, { maxRows = 1000 } = {}) {
   for (const order of parsed.orderBy) ref = ref.orderBy(order.field, order.direction);
   const limit = Math.min(parsed.limit ?? maxRows, 100000);
   if (parsed.offset) ref = ref.offset(parsed.offset);
-  const snap = await ref.limit(limit).get();
-  const docs = snap.docs.map(d => ({ id: d.id, ...encode(d.data()) }));
+  const found = await readQuery(session, ref.limit(limit));
+  const docs = found.map(d => ({ id: d.id, ...encode(d.data()) }));
   return docResult(docs, `${docs.length} documents`, docs.length, { truncated: parsed.limit === undefined && docs.length === limit, maxRows });
 }
 
@@ -207,7 +283,12 @@ async function mutate(session, op) {
 
 async function discover(session) {
   const collections = await session.db.listCollections();
-  return { databases: [session.projectId].filter(Boolean), schemas: [], objects: collections.map(c => ({ name: c.id, type: 'collection' })), message: collections.length ? '' : 'No top-level collections are available.' };
+  return {
+    databases: [session.projectId].filter(Boolean),
+    schemas: [],
+    objects: collections.map(c => ({ name: c.id, type: 'collection' })),
+    message: collections.length ? '' : 'No top-level collections are available.'
+  };
 }
 
-module.exports = { connect, close, query, mutate, discover, isWrite, parseCommand, encode, decode };
+module.exports = { connect, close, query, cancel, mutate, discover, isWrite, parseCommand, encode, decode };

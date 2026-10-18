@@ -4,13 +4,16 @@ const { logger } = require('../logger');
 
 // `dial` is the profile as it must be dialled (host/port already point at the SSH tunnel when one is used).
 function open(dial, tunnel) {
-  const mysql = require('mysql2/promise');   // loaded on first use to keep app start-up light
+  const mysql = require('mysql2/promise'); // loaded on first use to keep app start-up light
   const uri = dial.connectionString ? new URL(dial.connectionString) : null;
   return mysql.createConnection({
-    host: uri?.hostname || dial.host, port: Number(uri?.port || dial.port || 3306),
-    user: dial.username || (uri ? decodeURIComponent(uri.username) : ''), password: dial.password || (uri ? decodeURIComponent(uri.password) : ''),
+    host: uri?.hostname || dial.host,
+    port: Number(uri?.port || dial.port || 3306),
+    user: dial.username || (uri ? decodeURIComponent(uri.username) : ''),
+    password: dial.password || (uri ? decodeURIComponent(uri.password) : ''),
     database: dial.database || (uri ? decodeURIComponent(uri.pathname.replace(/^\//, '')) : '') || undefined,
-    connectTimeout: 10000, ssl: dial.ssl ? { minVersion: 'TLSv1.2', rejectUnauthorized: !dial.sslAllowUntrusted, servername: tunnel?.remoteHost || uri?.hostname } : undefined
+    connectTimeout: 10000,
+    ssl: dial.ssl ? { minVersion: 'TLSv1.2', rejectUnauthorized: !dial.sslAllowUntrusted, servername: tunnel?.remoteHost || uri?.hostname } : undefined
   });
 }
 
@@ -21,7 +24,10 @@ async function openChecked(dial, tunnel) {
   try {
     await client.query('SELECT 1');
     if (dial.readOnly) await client.query('SET SESSION TRANSACTION READ ONLY');
-  } catch (err) { await client.end().catch(() => {}); throw err; }
+  } catch (err) {
+    await client.end().catch(() => {});
+    throw err;
+  }
   return client;
 }
 
@@ -31,7 +37,11 @@ async function connect(dial, tunnel) {
 
 // A second connection used for the object browser and for cancelling, so a long-running query never blocks them.
 function meta(session) {
-  if (!session.meta) session.meta = openChecked(session.dial, session.tunnel).catch(err => { session.meta = null; throw err; });
+  if (!session.meta)
+    session.meta = openChecked(session.dial, session.tunnel).catch(err => {
+      session.meta = null;
+      throw err;
+    });
   return session.meta;
 }
 
@@ -68,23 +78,52 @@ async function switchDatabase(session, database) {
   session.database = database;
 }
 
+// "IN id int, OUT total decimal(10,2)" per routine; a function's return value has no ordinal position and is skipped.
+function routineSignatures(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    const key = `${row.kind}:${row.routine}`;
+    const part = [row.kind === 'PROCEDURE' ? row.mode : '', row.name, row.type].filter(Boolean).join(' ');
+    map.set(key, map.has(key) ? `${map.get(key)}, ${part}` : part);
+  }
+  return map;
+}
+
 async function discover(session, database) {
   const client = await meta(session);
   const [dbRows] = await client.query('SHOW DATABASES');
   const databases = dbRows.map(row => Object.values(row)[0]).filter(Boolean);
   const selected = database || session.database || session.profile.database || databases[0] || '';
-  const [rows] = selected ? await client.query(
-    'SELECT TABLE_SCHEMA AS schemaName, TABLE_NAME AS name, TABLE_TYPE AS objectType, ENGINE AS engine FROM information_schema.tables WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME', [selected]
-  ) : [[]];
-  const [routines] = selected ? await client.query(
-    'SELECT ROUTINE_NAME AS name, ROUTINE_TYPE AS kind FROM information_schema.routines WHERE ROUTINE_SCHEMA = ? ORDER BY ROUTINE_NAME LIMIT 2000', [selected]
-  ) : [[]];
+  const [rows] = selected
+    ? await client.query(
+        'SELECT TABLE_SCHEMA AS schemaName, TABLE_NAME AS name, TABLE_TYPE AS objectType, ENGINE AS engine FROM information_schema.tables WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME',
+        [selected]
+      )
+    : [[]];
+  const [routines] = selected
+    ? await client.query('SELECT ROUTINE_NAME AS name, ROUTINE_TYPE AS kind FROM information_schema.routines WHERE ROUTINE_SCHEMA = ? ORDER BY ROUTINE_NAME LIMIT 2000', [selected])
+    : [[]];
+  const [params] = selected
+    ? await client.query(
+        'SELECT SPECIFIC_NAME AS routine, ROUTINE_TYPE AS kind, PARAMETER_MODE AS mode, PARAMETER_NAME AS name, DTD_IDENTIFIER AS type FROM information_schema.parameters WHERE SPECIFIC_SCHEMA = ? AND ORDINAL_POSITION > 0 ORDER BY SPECIFIC_NAME, ORDINAL_POSITION',
+        [selected]
+      )
+    : [[]];
+  const signatures = routineSignatures(params);
   // Columns and keys are loaded per table when it is opened (see describe), so a big schema lists quickly.
   return {
-    databases, schemas: [selected].filter(Boolean), message: '',
+    databases,
+    schemas: [selected].filter(Boolean),
+    message: '',
     objects: [
       ...rows.map(r => ({ name: r.name, schema: r.schemaName, type: String(r.objectType).toLowerCase() === 'view' ? 'view' : 'table', metadata: r.engine || '' })),
-      ...routines.map(r => ({ name: r.name, schema: selected, type: 'function', metadata: String(r.kind).toLowerCase() }))
+      ...routines.map(r => ({
+        name: r.name,
+        signature: `${r.name}(${signatures.get(`${r.kind}:${r.name}`) || ''})`,
+        schema: selected,
+        type: 'function',
+        metadata: String(r.kind).toLowerCase()
+      }))
     ]
   };
 }
@@ -92,16 +131,33 @@ async function discover(session, database) {
 async function describe(session, object) {
   const client = await meta(session);
   const schema = object.schema || session.database || session.profile.database;
-  const [columns] = await client.query('SELECT COLUMN_NAME AS name, COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.columns WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION', [schema, object.name]);
-  const [keys] = await client.query("SELECT COLUMN_NAME AS name FROM information_schema.key_column_usage WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY' ORDER BY ORDINAL_POSITION", [schema, object.name]);
-  const [stats] = await client.query('SELECT INDEX_NAME AS name, NON_UNIQUE AS nonUnique, COLUMN_NAME AS column_name FROM information_schema.statistics WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY INDEX_NAME, SEQ_IN_INDEX', [schema, object.name]);
+  const [columns] = await client.query(
+    'SELECT COLUMN_NAME AS name, COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.columns WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION',
+    [schema, object.name]
+  );
+  const [keys] = await client.query(
+    "SELECT COLUMN_NAME AS name FROM information_schema.key_column_usage WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY' ORDER BY ORDINAL_POSITION",
+    [schema, object.name]
+  );
+  const [stats] = await client.query(
+    'SELECT INDEX_NAME AS name, NON_UNIQUE AS nonUnique, COLUMN_NAME AS column_name FROM information_schema.statistics WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY INDEX_NAME, SEQ_IN_INDEX',
+    [schema, object.name]
+  );
   const indexes = [];
   for (const row of stats) {
     let index = indexes.find(item => item.name === row.name);
-    if (!index) { index = { name: row.name, unique: !row.nonUnique, columns: [] }; indexes.push(index); }
+    if (!index) {
+      index = { name: row.name, unique: !row.nonUnique, columns: [] };
+      indexes.push(index);
+    }
     index.columns.push(row.column_name);
   }
-  return { columns: columns.map(c => c.name), columnInfo: columns.map(c => ({ name: c.name, type: c.type, nullable: c.nullable === 'YES' })), primaryKey: keys.map(k => k.name), indexes };
+  return {
+    columns: columns.map(c => c.name),
+    columnInfo: columns.map(c => ({ name: c.name, type: c.type, nullable: c.nullable === 'YES' })),
+    primaryKey: keys.map(k => k.name),
+    indexes
+  };
 }
 
-module.exports = { connect, close, query, cancel, mutate, switchDatabase, discover, describe, isWrite };
+module.exports = { routineSignatures, connect, close, query, cancel, mutate, switchDatabase, discover, describe, isWrite };

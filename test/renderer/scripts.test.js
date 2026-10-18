@@ -29,9 +29,18 @@ describe('splitStatements / statementAt', () => {
 
 describe('assessStatement', () => {
   it.each([
-    ['select 1', false, 0], ['delete from t', true, 1], ['delete from t where id = 1', true, 0], ['UPDATE t SET a = 1', true, 1], ['drop table x', true, 1],
-    ['truncate t', true, 1], ['alter table t drop column a', true, 1], ["select 'delete from t'", false, 0], ['with x as (select 1) delete from t', true, 0],
-    ['explain select 1', false, 0], ['  -- c\n insert into t values (1)', true, 0], ['create table t (a int)', true, 0]
+    ['select 1', false, 0],
+    ['delete from t', true, 1],
+    ['delete from t where id = 1', true, 0],
+    ['UPDATE t SET a = 1', true, 1],
+    ['drop table x', true, 1],
+    ['truncate t', true, 1],
+    ['alter table t drop column a', true, 1],
+    ["select 'delete from t'", false, 0],
+    ['with x as (select 1) delete from t', true, 0],
+    ['explain select 1', false, 0],
+    ['  -- c\n insert into t values (1)', true, 0],
+    ['create table t (a int)', true, 0]
   ])('%s -> write %s, %i warning(s)', (sql, write, warnings) => {
     const result = assessStatement(sql, 'postgres');
     expect(result.write).toBe(write);
@@ -48,26 +57,51 @@ describe('assessStatement', () => {
 describe('browse queries', () => {
   const state = { ...DEFAULT_BROWSE, page: 2, pageSize: 100, orderBy: 'created at', orderDir: 'desc', where: "status = 'a';" };
   it('builds one page plus one row, to detect a next page', () => {
-    expect(buildBrowseQuery({ type: 'postgres' }, { name: 'users', schema: 'public' }, state)).toBe(`SELECT * FROM "public"."users" WHERE status = 'a' ORDER BY "created at" DESC LIMIT 101 OFFSET 200;`);
+    expect(buildBrowseQuery({ type: 'postgres' }, { name: 'users', schema: 'public' }, state)).toBe(
+      `SELECT * FROM "public"."users" WHERE status = 'a' ORDER BY "created at" DESC LIMIT 101 OFFSET 200;`
+    );
     expect(buildBrowseQuery({ type: 'mysql' }, { name: 'us`ers', schema: 'db' }, { ...state, orderBy: '', where: '' })).toBe('SELECT * FROM `db`.`us``ers` LIMIT 101 OFFSET 200;');
     expect(buildBrowseQuery({ type: 'mongodb' }, { name: 'users' }, { ...state, where: '{"a":1}' })).toBe('find users {"a":1} SORT {"created at":-1} SKIP 200 LIMIT 101');
+  });
+  it('builds Firestore and Supabase REST browse commands', () => {
+    expect(buildBrowseQuery({ type: 'firestore' }, { name: 'users' }, { ...state, where: 'age >= 18' })).toBe(
+      'read users WHERE age >= 18 ORDER BY created at DESC LIMIT 101 OFFSET 200'
+    );
+    expect(buildBrowseQuery({ type: 'firestore' }, { name: 'users' }, { ...DEFAULT_BROWSE })).toBe('read users LIMIT 101');
+    expect(buildBrowseQuery({ type: 'supabase' }, { name: 'items' }, { ...state, orderBy: 'id', where: "status = 'a'" })).toBe(
+      "REST: items WHERE status = 'a' ORDER BY id DESC LIMIT 101 OFFSET 200"
+    );
   });
   it('knows what can be browsed', () => {
     expect(canBrowse({ type: 'postgres' }, { type: 'table' })).toBe(true);
     expect(canBrowse({ type: 'postgres' }, { type: 'function' })).toBe(false);
-    expect(canBrowse({ type: 'supabase' }, { type: 'table' })).toBe(false);   // REST mode
+    expect(canBrowse({ type: 'supabase' }, { type: 'table' })).toBe(true); // REST mode
     expect(canBrowse({ type: 'supabase', connectionString: 'x' }, { type: 'table' })).toBe(true);
-    expect(canBrowse({ type: 'firestore' }, { type: 'collection' })).toBe(false);
+    expect(canBrowse({ type: 'firestore' }, { type: 'collection' })).toBe(true);
   });
 });
 
 describe('formatSql', () => {
   it('puts clauses on their own lines and capitalises keywords', () => {
-    const out = formatSql("select u.id, u.name, count(o.id) as orders from users u left join orders o on o.user_id = u.id and o.status = 'paid' where u.age >= 18 and u.vip = true group by u.id order by orders desc limit 10;", 'postgres');
-    expect(out).toBe([
-      'SELECT', '  u.id,', '  u.name,', '  count(o.id) AS orders', 'FROM users u',
-      "LEFT JOIN orders o ON o.user_id = u.id AND o.status = 'paid'", 'WHERE u.age >= 18', '  AND u.vip = TRUE', 'GROUP BY u.id', 'ORDER BY orders DESC', 'LIMIT 10;'
-    ].join('\n'));
+    const out = formatSql(
+      "select u.id, u.name, count(o.id) as orders from users u left join orders o on o.user_id = u.id and o.status = 'paid' where u.age >= 18 and u.vip = true group by u.id order by orders desc limit 10;",
+      'postgres'
+    );
+    expect(out).toBe(
+      [
+        'SELECT',
+        '  u.id,',
+        '  u.name,',
+        '  count(o.id) AS orders',
+        'FROM users u',
+        "LEFT JOIN orders o ON o.user_id = u.id AND o.status = 'paid'",
+        'WHERE u.age >= 18',
+        '  AND u.vip = TRUE',
+        'GROUP BY u.id',
+        'ORDER BY orders DESC',
+        'LIMIT 10;'
+      ].join('\n')
+    );
   });
   it('does not split BETWEEN ... AND, and indents subqueries', () => {
     expect(formatSql('select * from t where a between 1 and 5 and b = 2', 'postgres')).toContain('WHERE a BETWEEN 1 AND 5\n  AND b = 2');

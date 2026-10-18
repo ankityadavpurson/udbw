@@ -1,13 +1,18 @@
 import { Button, CodeIcon, Flex, FolderIcon, HelperText, Input, ListIcon, Loader, RefreshIcon, SearchIcon, Select, Stack, TableIcon, Tree } from 'xedonium';
 
-const typeLabel = type => ({ table: 'Tables', view: 'Views', sequence: 'Sequences', function: 'Functions', collection: 'Collections' }[type] || type);
+const typeLabel = type => ({ table: 'Tables', view: 'Views', sequence: 'Sequences', function: 'Functions', collection: 'Collections' })[type] || type;
 const TYPE_ORDER = ['table', 'view', 'collection', 'sequence', 'function'];
 const typeIcon = type => (type === 'collection' ? <FolderIcon /> : type === 'function' ? <CodeIcon /> : type === 'sequence' ? <ListIcon /> : <TableIcon />);
 const objectKey = item => `obj:${item.schema || ''}.${item.name}`;
 
 // `tree` is the object returned by useObjectTree.
 export default function ObjectBrowser({ active, isConnected, connecting, tree, selectedObject, onOpen }) {
-  if (connecting) return <div className="p-4"><Loader variant="inline" size="sm" label="Connecting…" /></div>;
+  if (connecting)
+    return (
+      <div className="p-4">
+        <Loader variant="inline" size="sm" label="Connecting…" />
+      </div>
+    );
   if (!active || !isConnected) return <HelperText className="p-4">Connect to browse databases and objects.</HelperText>;
   const { objectTree, treeLoading, currentDatabase, currentSchema, objectSearch, setObjectSearch, loadObjectTree, changeDatabase, changeSchema } = tree;
 
@@ -18,16 +23,27 @@ export default function ObjectBrowser({ active, isConnected, connecting, tree, s
     const items = objects.filter(item => (item.type || 'object') === type);
     return {
       key: `group:${type}`,
-      label: <span className="font-semibold">{typeLabel(type)} <span className="text-app-muted">({items.length})</span></span>,
+      label: (
+        <span className="font-semibold">
+          {typeLabel(type)} <span className="text-app-muted">({items.length})</span>
+        </span>
+      ),
       children: items.map(item => {
-        const key = objectKey(item); lookup.set(key, item);
+        const key = objectKey(item);
+        lookup.set(key, item);
         return {
           key,
           label: (
             <span className="flex min-w-0 items-center gap-2">
               <span className="shrink-0 [&>svg]:h-3.5 [&>svg]:w-3.5">{typeIcon(type)}</span>
-              <span className="truncate">{item.name}</span>
-              {item.columns?.length ? <span className="ml-auto shrink-0 text-[10px] text-app-muted">{item.columns.length} cols</span> : item.metadata && item.type !== 'collection' ? <span className="ml-auto shrink-0 text-[10px] text-app-muted">{item.metadata}</span> : null}
+              <span className="truncate" title={item.signature || item.name}>
+                {item.signature || item.name}
+              </span>
+              {item.columns?.length ? (
+                <span className="ml-auto shrink-0 text-[10px] text-app-muted">{item.columns.length} cols</span>
+              ) : item.metadata && item.type !== 'collection' ? (
+                <span className="ml-auto shrink-0 text-[10px] text-app-muted">{item.metadata}</span>
+              ) : null}
             </span>
           )
         };
@@ -39,18 +55,53 @@ export default function ObjectBrowser({ active, isConnected, connecting, tree, s
     <Stack gap={2} className="compact-fields p-2">
       <Flex justify="between" align="center">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-app-muted">Database objects</span>
-        <Button variant="flat" tooltip="Refresh objects" aria-label="Refresh objects" disabled={treeLoading} onClick={() => loadObjectTree()}><RefreshIcon /></Button>
+        <Button variant="flat" tooltip="Refresh objects" aria-label="Refresh objects" disabled={treeLoading} onClick={() => loadObjectTree()}>
+          <RefreshIcon />
+        </Button>
       </Flex>
-      {!!objectTree?.databases?.length && <Select label="Database" disabled={treeLoading} value={currentDatabase || objectTree.databases[0]} onChange={changeDatabase} options={objectTree.databases.map(db => ({ value: db, label: db }))} />}
-      {!!objectTree?.schemas?.length && <Select label="Schema" disabled={treeLoading} value={currentSchema} placeholder="All schemas" onChange={changeSchema} options={[{ value: '', label: 'All schemas' }, ...objectTree.schemas.map(schema => ({ value: schema, label: schema }))]} />}
-      {!!objectTree?.objects?.length && <Input value={objectSearch} onChange={setObjectSearch} placeholder="Search objects…" aria-label="Search database objects" startAdornment={<SearchIcon className="h-4 w-4" />} />}
+      {!!objectTree?.databases?.length && (
+        <Select
+          label="Database"
+          disabled={treeLoading}
+          value={currentDatabase || objectTree.databases[0]}
+          onChange={changeDatabase}
+          options={objectTree.databases.map(db => ({ value: db, label: db }))}
+        />
+      )}
+      {!!objectTree?.schemas?.length && (
+        <Select
+          label="Schema"
+          disabled={treeLoading}
+          value={currentSchema}
+          placeholder="All schemas"
+          onChange={changeSchema}
+          options={[{ value: '', label: 'All schemas' }, ...objectTree.schemas.map(schema => ({ value: schema, label: schema }))]}
+        />
+      )}
+      {!!objectTree?.objects?.length && (
+        <Input
+          value={objectSearch}
+          onChange={setObjectSearch}
+          placeholder="Search objects…"
+          aria-label="Search database objects"
+          startAdornment={<SearchIcon className="h-4 w-4" />}
+        />
+      )}
       {treeLoading && <Loader variant="inline" size="sm" label="Loading objects…" />}
       {!treeLoading && objectTree?.message && <HelperText>{objectTree.message}</HelperText>}
       {!treeLoading && !objectTree?.message && !objects.length && <HelperText>{objectSearch ? 'No objects match this search.' : 'No databases or objects available.'}</HelperText>}
       {!treeLoading && !!nodes.length && (
-        <Tree key={`${currentDatabase}|${currentSchema}|${objectTree?.objects?.length}|${objectSearch}`} label="Database objects" nodes={nodes}
-          defaultExpanded={nodes.filter(n => n.key !== 'group:function' && n.key !== 'group:sequence').map(n => n.key)} selected={selectedObject ? objectKey(selectedObject) : undefined}
-          onSelect={key => { const item = lookup.get(key); if (item) onOpen(item); }} />
+        <Tree
+          key={`${currentDatabase}|${currentSchema}|${objectTree?.objects?.length}|${objectSearch}`}
+          label="Database objects"
+          nodes={nodes}
+          defaultExpanded={nodes.filter(n => n.key !== 'group:function' && n.key !== 'group:sequence').map(n => n.key)}
+          selected={selectedObject ? objectKey(selectedObject) : undefined}
+          onSelect={key => {
+            const item = lookup.get(key);
+            if (item) onOpen(item);
+          }}
+        />
       )}
     </Stack>
   );

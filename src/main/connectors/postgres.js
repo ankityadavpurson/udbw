@@ -8,25 +8,41 @@ function pgConnectionString(dial) {
   if (!dial.ssl) return dial.connectionString;
   try {
     const url = new URL(dial.connectionString);
-    url.searchParams.delete('sslmode'); url.searchParams.delete('uselibpqcompat');
+    url.searchParams.delete('sslmode');
+    url.searchParams.delete('uselibpqcompat');
     return url.toString();
-  } catch (_) { return dial.connectionString; }
+  } catch (_) {
+    return dial.connectionString;
+  }
 }
 
 // `defaultSsl` applies when the TLS box is off (Supabase always verifies TLS).
 async function openChecked(dial, tunnel, defaultSsl) {
-  const { Client } = require('pg');   // loaded on first use to keep app start-up light
+  const { Client } = require('pg'); // loaded on first use to keep app start-up light
   const ssl = dial.ssl ? { rejectUnauthorized: !dial.sslAllowUntrusted, servername: tunnel?.remoteHost } : defaultSsl;
-  const client = new Client(dial.connectionString
-    ? { connectionString: pgConnectionString(dial), connectionTimeoutMillis: 10000, ssl }
-    : { host: dial.host, port: Number(dial.port || 5432), user: dial.username, password: dial.password, database: dial.database || 'postgres', connectionTimeoutMillis: 10000, ssl });
+  const client = new Client(
+    dial.connectionString
+      ? { connectionString: pgConnectionString(dial), connectionTimeoutMillis: 10000, ssl }
+      : {
+          host: dial.host,
+          port: Number(dial.port || 5432),
+          user: dial.username,
+          password: dial.password,
+          database: dial.database || 'postgres',
+          connectionTimeoutMillis: 10000,
+          ssl
+        }
+  );
   // Without a listener a dropped connection would be an uncaught exception in the main process.
   client.on('error', err => logger.warn('[pg] connection error:', err.message));
   await client.connect();
   try {
     await client.query('SELECT 1');
     if (dial.readOnly) await client.query('SET default_transaction_read_only = on');
-  } catch (err) { await client.end().catch(() => {}); throw err; }
+  } catch (err) {
+    await client.end().catch(() => {});
+    throw err;
+  }
   return client;
 }
 
@@ -38,7 +54,11 @@ async function connect(dial, tunnel, type = 'postgres') {
 
 // A second connection used for the object browser and for cancelling, so a long-running query never blocks them.
 function meta(session) {
-  if (!session.meta) session.meta = openChecked(session.dial, session.tunnel, session.defaultSsl).catch(err => { session.meta = null; throw err; });
+  if (!session.meta)
+    session.meta = openChecked(session.dial, session.tunnel, session.defaultSsl).catch(err => {
+      session.meta = null;
+      throw err;
+    });
   return session.meta;
 }
 
@@ -70,8 +90,12 @@ async function mutate(session, op) {
 }
 
 const KIND = {
-  r: { type: 'table', metadata: '' }, p: { type: 'table', metadata: 'partitioned table' }, f: { type: 'table', metadata: 'foreign table' },
-  v: { type: 'view', metadata: '' }, m: { type: 'view', metadata: 'materialized view' }, S: { type: 'sequence', metadata: '' }
+  r: { type: 'table', metadata: '' },
+  p: { type: 'table', metadata: 'partitioned table' },
+  f: { type: 'table', metadata: 'foreign table' },
+  v: { type: 'view', metadata: '' },
+  m: { type: 'view', metadata: 'materialized view' },
+  S: { type: 'sequence', metadata: '' }
 };
 
 // Lists tables, views (including materialized and foreign ones), sequences and functions straight from the catalogs, so
@@ -84,14 +108,16 @@ async function discover(session, database, schema) {
   const only = schema ? ' AND n.nspname = $1' : '';
   const relations = await client.query(
     `SELECT n.nspname AS schema, c.relname AS name, c.relkind AS kind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-     WHERE c.relkind IN ('r','p','v','m','f','S') AND n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'${only} ORDER BY n.nspname, c.relname`, params
+     WHERE c.relkind IN ('r','p','v','m','f','S') AND n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'${only} ORDER BY n.nspname, c.relname`,
+    params
   );
   const routines = await client.query(
     `SELECT n.nspname AS schema, p.proname AS name, p.oid::int AS oid, p.prokind AS kind, pg_get_function_identity_arguments(p.oid) AS args
      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
      WHERE p.prokind IN ('f','p') AND n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'${only}
        AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')
-     ORDER BY n.nspname, p.proname LIMIT 2000`, params
+     ORDER BY n.nspname, p.proname LIMIT 2000`,
+    params
   );
   const objects = [
     ...relations.rows.map(r => ({ name: r.name, schema: r.schema, ...KIND[r.kind] })),
@@ -106,17 +132,24 @@ async function describe(session, object) {
   const columns = await client.query(
     `SELECT a.attname AS name, pg_catalog.format_type(a.atttypid, a.atttypmod) AS type, NOT a.attnotnull AS nullable
      FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
-     WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`, [schema, object.name]
+     WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`,
+    [schema, object.name]
   );
   const keys = await client.query(
     `SELECT a.attname AS name FROM pg_index i JOIN pg_class c ON c.oid = i.indrelid JOIN pg_namespace n ON n.oid = c.relnamespace
      JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey::int2[])
-     WHERE i.indisprimary AND n.nspname = $1 AND c.relname = $2 ORDER BY array_position(i.indkey::int2[], a.attnum)`, [schema, object.name]
+     WHERE i.indisprimary AND n.nspname = $1 AND c.relname = $2 ORDER BY array_position(i.indkey::int2[], a.attnum)`,
+    [schema, object.name]
   );
-  const indexes = await client.query('SELECT indexname AS name, indexdef AS definition FROM pg_indexes WHERE schemaname = $1 AND tablename = $2 ORDER BY indexname', [schema, object.name]);
+  const indexes = await client.query('SELECT indexname AS name, indexdef AS definition FROM pg_indexes WHERE schemaname = $1 AND tablename = $2 ORDER BY indexname', [
+    schema,
+    object.name
+  ]);
   return {
-    columns: columns.rows.map(c => c.name), columnInfo: columns.rows.map(c => ({ name: c.name, type: c.type, nullable: c.nullable })),
-    primaryKey: keys.rows.map(k => k.name), indexes: indexes.rows.map(i => ({ name: i.name, definition: i.definition }))
+    columns: columns.rows.map(c => c.name),
+    columnInfo: columns.rows.map(c => ({ name: c.name, type: c.type, nullable: c.nullable })),
+    primaryKey: keys.rows.map(k => k.name),
+    indexes: indexes.rows.map(i => ({ name: i.name, definition: i.definition }))
   };
 }
 

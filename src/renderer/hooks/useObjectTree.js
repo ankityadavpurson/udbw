@@ -23,22 +23,30 @@ export default function useObjectTree({ active, activeId, markLost, updateProfil
     if (!response.ok) {
       const message = response.error?.message || 'Could not load database objects.';
       if (connectionGone(response.error)) markLost(id);
-      setObjectTree({ databases: [], schemas: [], objects: [], message }); return;
+      setObjectTree({ databases: [], schemas: [], objects: [], message });
+      return;
     }
     const next = response.result;
-    setObjectTree(next); setCurrentDatabase(database || next.databases?.[0] || '');
+    setObjectTree(next);
+    setCurrentDatabase(database || next.databases?.[0] || '');
     if (next.message) setStatus(next.message);
   }
 
   async function changeDatabase(database) {
     if (!active || !database) return;
     const previousDatabase = currentDatabase;
-    setTreeLoading(true); setCurrentDatabase(database);
+    setTreeLoading(true);
+    setCurrentDatabase(database);
     const switched = await window.workbench.switchDatabase({ id: active.id, database });
     setTreeLoading(false);
-    if (!switched.ok) { setCurrentDatabase(previousDatabase); setStatus(`Database switch failed: ${switched.error?.message || 'Unknown error'}`); return; }
+    if (!switched.ok) {
+      setCurrentDatabase(previousDatabase);
+      setStatus(`Database switch failed: ${switched.error?.message || 'Unknown error'}`);
+      return;
+    }
     updateProfile(active.id, { database });
-    setCurrentSchema(''); await loadObjectTree(active.id, database, '');
+    setCurrentSchema('');
+    await loadObjectTree(active.id, database, '');
   }
 
   function changeSchema(schema) {
@@ -48,9 +56,15 @@ export default function useObjectTree({ active, activeId, markLost, updateProfil
 
   // A different connection became active: reset the selectors and load (or clear) its objects.
   async function resetFor(profile, isConnected) {
-    setCurrentDatabase(profile.database || ''); setCurrentSchema(''); setObjectSearch('');
+    setCurrentDatabase(profile.database || '');
+    setCurrentSchema('');
+    setObjectSearch('');
     if (isConnected) await loadObjectTree(profile.id, profile.database || '');
-    else { loadSeq.current += 1; setTreeLoading(false); setObjectTree(null); }
+    else {
+      loadSeq.current += 1;
+      setTreeLoading(false);
+      setObjectTree(null);
+    }
   }
 
   // Columns, keys and indexes are read when a table is opened, not for the whole schema up front.
@@ -69,10 +83,24 @@ export default function useObjectTree({ active, activeId, markLost, updateProfil
     return described;
   }
 
-  const clear = () => { loadSeq.current += 1; setTreeLoading(false); setObjectTree(null); };
+  const clear = () => {
+    loadSeq.current += 1;
+    setTreeLoading(false);
+    setObjectTree(null);
+  };
 
   return {
-    objectTree, treeLoading, currentDatabase, currentSchema, objectSearch, setObjectSearch,
-    loadObjectTree, changeDatabase, changeSchema, resetFor, describeObject, clear
+    objectTree,
+    treeLoading,
+    currentDatabase,
+    currentSchema,
+    objectSearch,
+    setObjectSearch,
+    loadObjectTree,
+    changeDatabase,
+    changeSchema,
+    resetFor,
+    describeObject,
+    clear
   };
 }

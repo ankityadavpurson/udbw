@@ -13,11 +13,16 @@ export default function useConnectionDialog({ connected, saveProfile, onSaved })
   function openDialog(existing = null) {
     setEditingId(existing?.id || null);
     setProfile(existing ? { ...blankProfile, ...existing } : { ...blankProfile });
-    setTestState('idle'); setFormError(''); setOpen(true);
+    setTestState('idle');
+    setFormError('');
+    setOpen(true);
   }
   const close = () => setOpen(false);
 
-  function update(key, value) { setTestState('idle'); setProfile(p => ({ ...p, [key]: value })); }
+  function update(key, value) {
+    setTestState('idle');
+    setProfile(p => ({ ...p, [key]: value }));
+  }
 
   function selectEngine(type) {
     setTestState('idle');
@@ -36,11 +41,17 @@ export default function useConnectionDialog({ connected, saveProfile, onSaved })
   async function testConnection() {
     const problem = validateForTest(profile);
     if (problem) return setFormError(problem);
-    setTestState('testing'); setFormError('Testing connection…');
+    setTestState('testing');
+    setFormError('Testing connection…');
     try {
       const tested = await window.workbench.test({ profile: { ...profile, name: profile.name.trim() }, id: editingId });
-      if (tested.ok) { setTestState('success'); setFormError('Connection test succeeded. Save when ready.'); }
-      else { setTestState('failed'); setFormError(`Connection test failed: ${tested.error?.message || 'Check the connection settings.'}`); }
+      if (tested.ok) {
+        setTestState('success');
+        setFormError('Connection test succeeded. Save when ready.');
+      } else {
+        setTestState('failed');
+        setFormError(`Connection test failed: ${tested.error?.message || 'Check the connection settings.'}`);
+      }
     } catch (err) {
       // IPC can reject when the main process or a driver fails before returning its normal { ok, error } response.
       setTestState('failed');
@@ -49,10 +60,12 @@ export default function useConnectionDialog({ connected, saveProfile, onSaved })
   }
 
   async function submit(e) {
-    e.preventDefault(); setFormError('');
+    e.preventDefault();
+    setFormError('');
     const problem = validateForSave(profile);
     if (problem) return setFormError(problem);
-    if (editingId && connected.includes(editingId) && testState !== 'success') return setFormError('Test the edited settings successfully before replacing the active saved configuration.');
+    if (editingId && connected.includes(editingId) && testState !== 'success')
+      return setFormError('Test the edited settings successfully before replacing the active saved configuration.');
     const saved = await saveProfile({ profile, editingId });
     onSaved?.(saved.next, saved.existing);
     setOpen(false);

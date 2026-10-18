@@ -34,7 +34,12 @@ describe('MongoDB commands', () => {
     expect(parse('collections')).toEqual({ action: 'collections' });
     expect(parse('find users')).toEqual({ action: 'find', collection: 'users' });
     expect(parse('find users {"age":{"$gt":3}} SORT {"age":-1} SKIP 5 LIMIT 10')).toEqual({
-      action: 'find', collection: 'users', filter: { age: { $gt: 3 } }, sort: { age: -1 }, skip: 5, limit: 10
+      action: 'find',
+      collection: 'users',
+      filter: { age: { $gt: 3 } },
+      sort: { age: -1 },
+      skip: 5,
+      limit: 10
     });
     expect(parse('count users {a:1}')).toEqual({ action: 'count', collection: 'users', filter: { a: 1 } });
     expect(parse('distinct users country {a:1}')).toMatchObject({ action: 'distinct', field: 'country', filter: { a: 1 } });
@@ -42,7 +47,13 @@ describe('MongoDB commands', () => {
   });
   it('parses the shell forms, including chained calls', () => {
     expect(parse('db.users.find({name: "x"}, {name: 1}).sort({age: -1}).skip(2).limit(5)')).toMatchObject({
-      action: 'find', collection: 'users', filter: { name: 'x' }, projection: { name: 1 }, sort: { age: -1 }, skip: 2, limit: 5
+      action: 'find',
+      collection: 'users',
+      filter: { name: 'x' },
+      projection: { name: 1 },
+      sort: { age: -1 },
+      skip: 2,
+      limit: 5
     });
     expect(parse('db.users.countDocuments({a:1})')).toMatchObject({ action: 'count', filter: { a: 1 } });
     expect(parse('db.users.updateMany({a:1},{$set:{b:2}})')).toMatchObject({ action: 'updateMany', filter: { a: 1 }, update: { $set: { b: 2 } } });
@@ -83,8 +94,15 @@ describe('Firestore commands', () => {
   it('parses reads with WHERE / ORDER BY / LIMIT / OFFSET', () => {
     expect(parse('read users')).toEqual({ action: 'read', path: 'users', where: [], orderBy: [] });
     expect(parse('read users WHERE age >= 18 AND name == "bob" ORDER BY age DESC LIMIT 5 OFFSET 2')).toEqual({
-      action: 'read', path: 'users', limit: 5, offset: 2, orderBy: [{ field: 'age', direction: 'desc' }],
-      where: [{ field: 'age', op: '>=', value: 18 }, { field: 'name', op: '==', value: 'bob' }]
+      action: 'read',
+      path: 'users',
+      limit: 5,
+      offset: 2,
+      orderBy: [{ field: 'age', direction: 'desc' }],
+      where: [
+        { field: 'age', op: '>=', value: 18 },
+        { field: 'name', op: '==', value: 'bob' }
+      ]
     });
     expect(parse('count users WHERE tags array-contains "x"')).toMatchObject({ action: 'count', where: [{ op: 'array-contains', value: 'x' }] });
     expect(parse('read users/abc/orders where total > 5').path).toBe('users/abc/orders');
@@ -118,14 +136,55 @@ describe('Firestore commands', () => {
 
 describe('Supabase REST commands', () => {
   it('parses reads and writes', () => {
-    expect(rest.parseCommand('REST: items LIMIT 5')).toEqual({ action: 'read', table: 'items', limit: 5 });
+    expect(rest.parseCommand('REST: items LIMIT 5')).toEqual({ action: 'read', table: 'items', filters: [], orderBy: [], limit: 5, offset: 0 });
     expect(rest.parseCommand('REST: items')).toMatchObject({ limit: 100 });
     expect(rest.parseCommand('DELETE items sku=a%20b')).toMatchObject({ action: 'delete', keyColumn: 'sku', id: 'a b' });
     expect(rest.parseCommand('UPDATE items id=5 {"x":1}')).toMatchObject({ action: 'update', id: '5', changes: { x: 1 } });
     expect(() => rest.parseCommand('nope')).toThrow(/REST mode accepts/);
+    expect(rest.parseCommand("REST: items WHERE status = 'a b' AND age >= 18 AND deleted_at is null ORDER BY created DESC, id LIMIT 11 OFFSET 20")).toMatchObject({
+      table: 'items',
+      limit: 11,
+      offset: 20,
+      filters: [
+        { column: 'status', op: 'eq', value: 'a b' },
+        { column: 'age', op: 'gte', value: '18' },
+        { column: 'deleted_at', op: 'is', value: null }
+      ],
+      orderBy: [
+        { column: 'created', ascending: false },
+        { column: 'id', ascending: true }
+      ]
+    });
+    expect(() => rest.parseCommand('REST: items WHERE oops')).toThrow(/WHERE needs/);
   });
   it('knows which commands write', () => {
     expect(rest.isWrite('REST: items')).toBe(false);
     expect(rest.isWrite('INSERT items {"a":1}')).toBe(true);
+  });
+});
+
+describe('Firestore browse commands', () => {
+  it('parses the generated browse query', () => {
+    expect(firestore.parseCommand('read users WHERE age >= 18 ORDER BY created DESC LIMIT 101 OFFSET 200')).toMatchObject({
+      action: 'read',
+      path: 'users',
+      limit: 101,
+      offset: 200,
+      where: [{ field: 'age', op: '>=', value: 18 }],
+      orderBy: [{ field: 'created', direction: 'desc' }]
+    });
+  });
+});
+
+describe('MySQL routine signatures', () => {
+  it('lists parameters per routine, with modes for procedures only', () => {
+    const { routineSignatures } = require('../../src/main/connectors/mysql.js');
+    const map = routineSignatures([
+      { kind: 'PROCEDURE', routine: 'add_user', mode: 'IN', name: 'n', type: 'varchar(50)' },
+      { kind: 'PROCEDURE', routine: 'add_user', mode: 'OUT', name: 'id', type: 'int' },
+      { kind: 'FUNCTION', routine: 'tax', mode: null, name: 'amount', type: 'decimal(10,2)' }
+    ]);
+    expect(map.get('PROCEDURE:add_user')).toBe('IN n varchar(50), OUT id int');
+    expect(map.get('FUNCTION:tax')).toBe('amount decimal(10,2)');
   });
 });
