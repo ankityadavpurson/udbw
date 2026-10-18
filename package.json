@@ -1,5 +1,5 @@
 {
-  "name": "universal-db-workbench",
+  "name": "udbw",
   "version": "0.1.0",
   "description": "Cross-platform desktop database workbench for MySQL, PostgreSQL, MongoDB, Supabase and Firebase Firestore",
   "private": true,
@@ -60,7 +60,7 @@
   },
   "build": {
     "appId": "dev.universaldb.workbench",
-    "productName": "Universal DB Workbench",
+    "productName": "UDBW",
     "copyright": "Copyright © ${author}",
     "files": [
       "src/main.js",

@@ -3,7 +3,8 @@ import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { AppBar, ButtonLink, Card, Divider, Grid, HelperText, Markdown, NotFoundPage, PageLayout, PageTitle, TextLink, useDocumentTitle } from 'xedonium';
 import { REPO, pages, source } from './pages.js';
 
-const SITE = 'Universal DB Workbench';
+const SITE = 'UDBW';
+const FULL_NAME = 'Universal DB Workbench';
 const routerLink = { linkComponent: Link, linkProp: 'to' };
 
 function Doc({ page }) {
@@ -26,12 +27,13 @@ const highlights = [
 ];
 
 function Home() {
-  useDocumentTitle(SITE);
+  useDocumentTitle(`${SITE} — ${FULL_NAME}`);
   const [intro, ...rest] = source('home').split('## Documentation');
   return (
     <div className="pb-10">
       <section className="py-8">
         <PageTitle>{SITE}</PageTitle>
+        <p className="mt-1 text-sm font-medium uppercase tracking-widest text-app-muted">{FULL_NAME}</p>
         <div className="mt-3 max-w-2xl text-lg text-app-muted"><Markdown {...routerLink}>{intro.trim()}</Markdown></div>
         <div className="mt-5 flex flex-wrap gap-3">
           <ButtonLink href="/download/" {...routerLink}>Download</ButtonLink>

@@ -15,11 +15,11 @@ const { pages, BASE } = await import(pathToFileURL(join(root, 'src/pages.js')).h
   return { pages: new Function(`return ${list}`)(), BASE: text.match(/BASE = '([^']*)'/)[1] };
 });
 
-const SITE = 'Universal DB Workbench';
+const SITE = 'UDBW';
 const shell = readFileSync(join(dist, 'index.html'), 'utf8');
 const escape = text => text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 const nav = pages.filter(p => p.nav).map(p => `<a href="${BASE}/${p.slug}/">${escape(p.title)}</a>`).join(' · ');
-const description = 'A cross-platform desktop client for MySQL, PostgreSQL, Supabase, MongoDB and Firestore.';
+const description = 'UDBW (Universal DB Workbench): a cross-platform desktop client for MySQL, PostgreSQL, Supabase, MongoDB and Firestore.';
 
 function write(file, title, desc, html) {
   const out = shell
@@ -32,7 +32,7 @@ function write(file, title, desc, html) {
 
 const render = slug => marked.parse(readFileSync(join(root, 'content', `${slug}.md`), 'utf8'), { gfm: true }).replace(/href="\//g, `href="${BASE}/`);
 
-write(join(dist, 'index.html'), SITE, description, `<h1>${SITE}</h1>${render('home')}`);
+write(join(dist, 'index.html'), `${SITE} — Universal DB Workbench`, description, `<h1>${SITE} — Universal DB Workbench</h1>${render('home')}`);
 for (const page of pages) write(join(dist, page.slug, 'index.html'), `${page.title} · ${SITE}`, page.description, `<h1>${escape(page.title)}</h1>${render(page.slug)}`);
 writeFileSync(join(dist, '404.html'), readFileSync(join(dist, 'index.html'), 'utf8'));
 console.log(`prerendered ${pages.length + 1} pages`);

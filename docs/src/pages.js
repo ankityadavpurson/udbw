@@ -6,8 +6,8 @@ export const pages = [
   { slug: 'features', title: 'Features', description: 'Browsing, querying, command syntax and export.', nav: true },
   { slug: 'security', title: 'Security', description: 'How the app protects credentials and what you are responsible for.', nav: true },
   { slug: 'development', title: 'Development', description: 'Building from source, tests, CI/CD and releases.', nav: true },
-  { slug: 'privacy', title: 'Privacy policy', description: 'What Universal DB Workbench does and does not send over the network.' },
-  { slug: 'code-signing', title: 'Code signing policy', description: 'How Universal DB Workbench installers are built and signed.' }
+  { slug: 'privacy', title: 'Privacy policy', description: 'What UDBW does and does not send over the network.' },
+  { slug: 'code-signing', title: 'Code signing policy', description: 'How UDBW installers are built and signed.' }
 ];
 
 export const REPO = 'https://github.com/ankityadavpurson/udbw';

@@ -47,7 +47,7 @@ const getMainWindow = () => (mainWindow && !mainWindow.isDestroyed() ? mainWindo
 function createSplash() {
   splash = new BrowserWindow({
     width: 420, height: 260, frame: false, resizable: false, maximizable: false, minimizable: false, show: false,
-    alwaysOnTop: true, skipTaskbar: true, backgroundColor: '#252529', title: 'Universal DB Workbench',
+    alwaysOnTop: true, skipTaskbar: true, backgroundColor: '#252529', title: 'UDBW',
     icon: path.join(root, 'build', 'icon.png'),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
@@ -81,7 +81,7 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 680,
     backgroundColor: '#101116',
-    title: 'Universal DB Workbench',
+    title: 'UDBW',
     icon: path.join(root, 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(root, 'src', 'preload.js'),
@@ -124,7 +124,7 @@ function hardenWebContents() {
 }
 
 function showAbout() {
-  dialog.showMessageBox(getMainWindow() || undefined, { type: 'info', title: 'About', message: 'Universal DB Workbench', detail: `Version ${app.getVersion()}`, buttons: ['OK'] });
+  dialog.showMessageBox(getMainWindow() || undefined, { type: 'info', title: 'About', message: 'UDBW', detail: `Universal DB Workbench\nVersion ${app.getVersion()}`, buttons: ['OK'] });
 }
 
 function buildAppMenu(theme = 'dark') {
@@ -146,7 +146,7 @@ function buildAppMenu(theme = 'dark') {
       { label: 'Check for updates…', click: () => require('./updater').checkForUpdates() },
       { label: 'Open log folder', click: () => shell.openPath(path.dirname(logFile())) },
       { type: 'separator' },
-      { label: 'About Universal DB Workbench', click: showAbout }
+      { label: 'About UDBW', click: showAbout }
     ] }
   ]));
 }
