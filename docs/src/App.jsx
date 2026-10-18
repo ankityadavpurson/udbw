@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { ButtonLink, Card, Divider, Grid, HelperText, Markdown, NotFoundPage, PageLayout, PageTitle, TextLink, useDocumentTitle } from 'xedonium';
 import { REPO, pages, source } from './pages.js';
+import LatestRelease from './LatestRelease.jsx';
 import SiteHeader from './SiteHeader.jsx';
 
 const SITE = 'UDBW';
@@ -18,6 +19,7 @@ function Doc({ page }) {
   return (
     <article className="pb-12 pt-2">
       <PageTitle className="mb-6">{page.title}</PageTitle>
+      {page.slug === 'download' && <div className="mb-8"><LatestRelease /></div>}
       <Markdown className={PROSE} {...routerLink} openLinksInNewTab>{source(page.slug)}</Markdown>
     </article>
   );
@@ -38,6 +40,7 @@ function Home() {
       <section className="py-8">
         <PageTitle>{SITE}<span className="sr-only"> — {FULL_NAME}</span></PageTitle>
         <p aria-hidden="true" className="mt-1 text-sm font-medium uppercase tracking-widest text-app-muted">{FULL_NAME}</p>
+        <div className="mt-4"><LatestRelease variant="badge" /></div>
         <div className="mt-3 max-w-2xl text-lg text-app-muted"><Markdown {...routerLink}>{intro.trim()}</Markdown></div>
         <div className="mt-5 flex flex-wrap gap-3">
           <ButtonLink href="/download/" {...routerLink}>Download</ButtonLink>
