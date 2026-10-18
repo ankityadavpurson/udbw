@@ -1,8 +1,3 @@
----
-title: Privacy policy
-description: What Universal DB Workbench does and does not send over the network.
----
-
 **This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.**
 
 ## What the app connects to

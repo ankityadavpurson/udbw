@@ -1,9 +1,4 @@
----
-title: Security
-description: How the app protects credentials and what you are responsible for.
----
-
-<div class="note">This is a hobby-grade tool, not a security-audited product.</div>
+> This is a hobby-grade tool, not a security-audited product.
 
 ## How secrets are handled
 
@@ -30,4 +25,4 @@ description: How the app protects credentials and what you are responsible for.
 
 ## Reporting a problem
 
-Open an issue on [GitHub]({{ site.repo }}/issues). For a vulnerability, avoid posting exploit details publicly: use GitHub's private vulnerability reporting on the repository's Security tab if it is enabled.
+Open an issue on [GitHub](https://github.com/ankityadavpurson/udbw/issues). For a vulnerability, avoid posting exploit details publicly: use GitHub's private vulnerability reporting on the repository's Security tab if it is enabled.

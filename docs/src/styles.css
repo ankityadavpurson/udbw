@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body { margin: 0; }
+/* Content shown before the script loads (and to crawlers): readable, then replaced by the React page. */
+.prerender { max-width: 56rem; margin: 0 auto; padding: 1.5rem 1rem; font-family: system-ui, sans-serif; line-height: 1.6; }

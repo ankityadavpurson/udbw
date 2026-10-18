@@ -1,9 +1,4 @@
----
-title: Download
-description: Installers for Windows, macOS and Linux.
----
-
-Get the latest version from the [GitHub releases page]({{ site.repo }}/releases/latest).
+Get the latest version from the [GitHub releases page](https://github.com/ankityadavpurson/udbw/releases/latest).
 
 | System | File |
 | --- | --- |
@@ -11,11 +6,11 @@ Get the latest version from the [GitHub releases page]({{ site.repo }}/releases/
 | macOS | `.dmg` (drag to Applications) or `.zip` |
 | Linux | `.AppImage` (make it executable, then run it) |
 
-Every release is built automatically from the source code in this repository by GitHub Actions. See the [development page]({{ '/development/' | relative_url }}) for how releases are made.
+Every release is built automatically from the source code in this repository by GitHub Actions. See the [development page](/development/) for how releases are made.
 
 ## Code signing
 
-Installers are currently **not signed**, so Windows SmartScreen shows "Unknown publisher" and macOS Gatekeeper warns on first launch. We are applying for free code signing for open-source projects. See the [code signing policy]({{ '/code-signing/' | relative_url }}) for the current status.
+Installers are currently **not signed**, so Windows SmartScreen shows "Unknown publisher" and macOS Gatekeeper warns on first launch. Free code signing will be provided by [SignPath.io](https://signpath.io), with the certificate issued by [SignPath Foundation](https://signpath.org), once our application is approved. See the [code signing policy](/code-signing/) for the current status.
 
 **Windows:** on the SmartScreen warning choose **More info**, then **Run anyway**.
 
