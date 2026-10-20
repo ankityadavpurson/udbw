@@ -298,6 +298,16 @@ app.whenReady().then(async () => {
       JSON.stringify(docUpdate)
     );
 
+    // The Settings menu offers the update check and shows the version.
+    await run(`document.querySelector('button[aria-label="Settings"]')?.click()`);
+    await sleep(400);
+    check('Settings has "Check for updates" and the version', /check for updates/i.test(await text()) && /version \d/i.test(await text()));
+    await run(`[...document.querySelectorAll('[role=menuitem]')].find(el => /check for updates/i.test(el.textContent))?.click()`);
+    await sleep(800);
+    check('choosing it explains that dev builds have no updates', /not set up for this build/i.test(await text()));
+    await run(`window.__t.buttons().find(b => b.textContent.trim() === 'OK')?.click()`);
+    await sleep(300);
+
     // The updater's messages appear in the app's own dialog and the answer comes back to the main process.
     const { showNotice } = require(path.join(root, 'src', 'main', 'updater.js'));
     const asked = showNotice({ title: 'Update available', message: 'Version 9.9.9 is available.', primary: 'Download', secondary: 'Later' });
@@ -307,6 +317,19 @@ app.whenReady().then(async () => {
     check('the chosen button is returned to the main process', (await asked) === 'primary');
     await sleep(500);
     check('the notice closes after an answer', !/Version 9\.9\.9 is available/.test(await text()));
+
+    // The automatic check reports with a dismissible toast, never a dialog.
+    const { sendToast } = require(path.join(root, 'src', 'main', 'updater.js'));
+    sendToast({ kind: 'available', version: '9.9.9' });
+    await sleep(500);
+    check(
+      'a new version shows as a toast with Download and Later',
+      /update available/i.test(await text()) && /9\.9\.9/.test(await text()) && !(await run(`!!document.querySelector('[role=dialog]')`))
+    );
+    await run(`document.querySelector('button[aria-label="Dismiss"]')?.click()`);
+    await sleep(300);
+    check('the toast can be dismissed', !/ready to download/i.test(await text()));
+    sendToast(null);
 
     check('no console errors or CSP violations', problems.length === 0, problems.join(' || '));
     check('the app wrote a log file', fs.existsSync(path.join(userData, 'logs', 'main.log')));

@@ -25,6 +25,7 @@ import RecordEditorDialog from './components/dialogs/RecordEditorDialog.jsx';
 import RecordViewerDialog from './components/dialogs/RecordViewerDialog.jsx';
 import HistoryDialog from './components/dialogs/HistoryDialog.jsx';
 import UpdateDialog from './components/dialogs/UpdateDialog.jsx';
+import UpdateToast from './components/UpdateToast.jsx';
 
 const objectId = item => `${item.schema || ''}.${item.name}`;
 
@@ -409,6 +410,7 @@ export default function App() {
       <RecordEditorDialog records={records} objectName={records.selectedObject?.name} documentMode={language === 'command'} />
       <RecordViewerDialog open={records.viewerOpen} onClose={() => records.setViewerOpen(false)} record={records.selectedJson} onCopy={copyText} />
       <UpdateDialog />
+      <UpdateToast />
       <ConfirmDialog
         open={discardAsk > 0}
         tone="danger"
