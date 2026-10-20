@@ -26,6 +26,17 @@ contextBridge.exposeInMainWorld('workbench', {
     return () => ipcRenderer.removeListener('unsaved:ask', handler);
   },
   answerDiscard: ok => ipcRenderer.send('unsaved:answer', ok === true),
+  onUpdateNotice: callback => {
+    const handler = (_event, notice) => callback(notice);
+    ipcRenderer.on('update:show', handler);
+    return () => ipcRenderer.removeListener('update:show', handler);
+  },
+  onUpdateProgress: callback => {
+    const handler = (_event, percent) => callback(percent);
+    ipcRenderer.on('update:progress', handler);
+    return () => ipcRenderer.removeListener('update:progress', handler);
+  },
+  answerUpdate: choice => ipcRenderer.send('update:answer', choice),
   reportUnsaved: count => ipcRenderer.send('unsaved:report', count),
   reportTheme: theme => ipcRenderer.send('theme:report', theme),
   onSetTheme: callback => {

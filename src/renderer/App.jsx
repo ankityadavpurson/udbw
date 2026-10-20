@@ -24,6 +24,7 @@ import ConnectionDialog from './components/dialogs/ConnectionDialog.jsx';
 import RecordEditorDialog from './components/dialogs/RecordEditorDialog.jsx';
 import RecordViewerDialog from './components/dialogs/RecordViewerDialog.jsx';
 import HistoryDialog from './components/dialogs/HistoryDialog.jsx';
+import UpdateDialog from './components/dialogs/UpdateDialog.jsx';
 
 const objectId = item => `${item.schema || ''}.${item.name}`;
 
@@ -407,6 +408,7 @@ export default function App() {
       <ConnectionDialog dialog={dialog} groups={[...new Set(conn.profiles.map(p => p.group?.trim() || 'Connections'))]} />
       <RecordEditorDialog records={records} objectName={records.selectedObject?.name} documentMode={language === 'command'} />
       <RecordViewerDialog open={records.viewerOpen} onClose={() => records.setViewerOpen(false)} record={records.selectedJson} onCopy={copyText} />
+      <UpdateDialog />
       <ConfirmDialog
         open={discardAsk > 0}
         tone="danger"

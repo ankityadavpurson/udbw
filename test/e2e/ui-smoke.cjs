@@ -298,6 +298,16 @@ app.whenReady().then(async () => {
       JSON.stringify(docUpdate)
     );
 
+    // The updater's messages appear in the app's own dialog and the answer comes back to the main process.
+    const { showNotice } = require(path.join(root, 'src', 'main', 'updater.js'));
+    const asked = showNotice({ title: 'Update available', message: 'Version 9.9.9 is available.', primary: 'Download', secondary: 'Later' });
+    await sleep(600);
+    check('an update notice shows in the app with both buttons', /Version 9\.9\.9 is available/.test(await text()) && /later/i.test(await text()));
+    await run(`window.__t.buttons().find(b => b.textContent.trim() === 'Download')?.click()`);
+    check('the chosen button is returned to the main process', (await asked) === 'primary');
+    await sleep(500);
+    check('the notice closes after an answer', !/Version 9\.9\.9 is available/.test(await text()));
+
     check('no console errors or CSP violations', problems.length === 0, problems.join(' || '));
     check('the app wrote a log file', fs.existsSync(path.join(userData, 'logs', 'main.log')));
   } catch (error) {
