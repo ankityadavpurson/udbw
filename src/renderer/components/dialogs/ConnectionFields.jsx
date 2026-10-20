@@ -1,4 +1,40 @@
+import { useState } from 'react';
+import { SECRET_MASK } from '../../constants';
 import { Alert, Button, Checkbox, Divider, Field, Flex, HelperText, PasswordInput, Select, Stack } from 'xedonium';
+
+// Password field whose show button also reveals a saved secret, which the UI otherwise only holds as a placeholder.
+function SecretInput({ label, value, onChange, placeholder, profileId, field }) {
+  const [shown, setShown] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const saved = value === SECRET_MASK;
+  const reveal = async () => {
+    setFailed(false);
+    const res = await window.workbench.revealSecret({ id: profileId, field });
+    if (res?.ok && res.value) {
+      onChange(res.value);
+      setShown(true);
+    } else setFailed(true);
+  };
+  return (
+    <Stack gap={1}>
+      <PasswordInput
+        label={label}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        autoComplete="off"
+        helperText={failed ? 'Could not read the saved value.' : saved ? 'Saved and hidden. Type to replace it.' : undefined}
+      />
+      {saved && !shown && (
+        <div className="compact-buttons">
+          <Button type="button" variant="secondary" onClick={reveal}>
+            Reveal saved value
+          </Button>
+        </div>
+      )}
+    </Stack>
+  );
+}
 
 // Engine-specific form fields of the connection dialog.
 export default function ConnectionFields({ profile, update, onPickServiceAccount, onPickSshKey }) {
@@ -8,7 +44,7 @@ export default function ConnectionFields({ profile, update, onPickServiceAccount
     <Field key={key} label={label} type={type} value={profile[key] || ''} onChange={upd(key)} placeholder={placeholder} required={required} helperText={helperText} />
   );
   const secretField = (label, key, placeholder) => (
-    <PasswordInput key={key} label={label} value={profile[key] || ''} onChange={upd(key)} placeholder={placeholder} autoComplete="off" />
+    <SecretInput key={key} label={label} value={profile[key] || ''} onChange={upd(key)} placeholder={placeholder} profileId={profile.id} field={key} />
   );
   const pathField = (label, key, placeholder, onPick, buttonLabel) => (
     <Flex align="end" gap={2}>

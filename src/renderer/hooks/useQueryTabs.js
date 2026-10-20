@@ -34,7 +34,7 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
   const tab = connTabs.find(t => t.id === activeTabId) ?? connTabs[0] ?? blankTab;
   const patchTab = (patch, id = tab.id) => setTabs(all => all.map(t => (t.id === id ? { ...t, ...patch } : t)));
   const setQuery = value => patchTab({ query: value });
-  const setError = value => patchTab({ error: value });
+  const setError = (value, meta) => patchTab(meta ? { error: value, meta, result: null } : { error: value });
   // A manual choice sticks to the tab; until then the view follows the shape of each result.
   const setView = value => patchTab({ view: value, viewPinned: true });
   const setSelected = value => patchTab({ selected: value });
@@ -71,8 +71,19 @@ export default function useQueryTabs({ activeId, active, isConnected, loaded, la
   function closeTab(id) {
     const mine = tabs.filter(t => t.connId === activeId);
     if (mine.length <= 1) {
+      tabCounter.current[activeId] = 1;
       patchTab(
-        { query: active ? engines[active.type].query : '', result: null, error: '', meta: 'No query executed', selected: [], selectedObject: null, browse: null, hasNext: false },
+        {
+          title: 'Query 1',
+          query: active ? engines[active.type].query : '',
+          result: null,
+          error: '',
+          meta: 'No query executed',
+          selected: [],
+          selectedObject: null,
+          browse: null,
+          hasNext: false
+        },
         id
       );
       return;

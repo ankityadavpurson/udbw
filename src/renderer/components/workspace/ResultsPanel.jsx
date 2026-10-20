@@ -122,7 +122,7 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
     if (error)
       return (
         <div className="p-4">
-          <Alert tone="danger" title="Query failed">
+          <Alert tone="danger" title={meta === 'Connection failed' ? 'Connection failed' : 'Query failed'}>
             <span className="whitespace-pre-wrap">{error}</span>
           </Alert>
         </div>

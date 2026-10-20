@@ -10,7 +10,7 @@ export default function QueryTabs({ tabs, activeTabId, canAdd, onSelect, onClose
         <span
           role="button"
           aria-label={`Close ${t.title}`}
-          className="shrink-0 rounded p-0.5 opacity-60 hover:bg-app-border hover:opacity-100 [&>svg]:h-3 [&>svg]:w-3"
+          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-none opacity-60 hover:bg-app-border hover:opacity-100 [&>svg]:h-3 [&>svg]:w-3"
           onClick={e => {
             e.stopPropagation();
             onClose(t.id);
@@ -21,9 +21,24 @@ export default function QueryTabs({ tabs, activeTabId, canAdd, onSelect, onClose
       </span>
     )
   }));
+  // Middle-click anywhere on a tab closes it.
+  const tabOf = e => {
+    const el = e.target.closest?.('[role="tab"]');
+    return el && tabs.find(t => el.id.endsWith(`-tab-${t.id}`));
+  };
   return (
     <Flex gap={1} align="center" className="compact-tabs shadow-[inset_0_-1px_0_rgb(var(--color-app-border))]">
-      <div className="min-w-0 flex-1">
+      <div
+        className="min-w-0 flex-1"
+        onMouseDown={e => e.button === 1 && tabOf(e) && e.preventDefault()}
+        onAuxClick={e => {
+          const t = e.button === 1 && tabOf(e);
+          if (t) {
+            e.preventDefault();
+            onClose(t.id);
+          }
+        }}
+      >
         <Tabs value={activeTabId} onChange={onSelect} items={items} />
       </div>
       <span className="compact-buttons compact-icons">

@@ -85,6 +85,11 @@ function registerIpc() {
     const loaded = store.load();
     return loaded.ok ? loaded : { ok: false, profiles: [], error: { message: loaded.message, code: loaded.code } };
   });
+  // Reveals one saved secret on request, for the show button of the connection dialog.
+  handle('connections:reveal-secret', async ({ id, field }) => {
+    if (!store.SECRET_FIELDS.includes(field)) return { ok: false, error: { message: 'Not a secret field.' } };
+    return { ok: true, value: String(store.getProfile(id)?.[field] ?? '') };
+  });
   handle('connections:save', async payload => store.save(payload));
 
   handle('db:test', ({ profile, id }) =>

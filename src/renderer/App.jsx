@@ -98,7 +98,7 @@ export default function App() {
   async function connect() {
     const res = await conn.connect();
     if (res.ok) await tree.loadObjectTree(res.id, res.database);
-    else if (res.message) tabsApi.setError(res.message);
+    else if (res.message) tabsApi.setError(res.message, 'Connection failed');
   }
 
   async function disconnect() {

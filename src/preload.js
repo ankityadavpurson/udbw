@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('workbench', {
   discover: payload => ipcRenderer.invoke('db:discover', payload),
   switchDatabase: payload => ipcRenderer.invoke('db:switch-database', payload),
   connect: payload => ipcRenderer.invoke('db:connect', payload),
+  revealSecret: payload => ipcRenderer.invoke('connections:reveal-secret', payload),
   disconnect: payload => ipcRenderer.invoke('db:disconnect', payload),
   query: payload => ipcRenderer.invoke('db:query', payload),
   mutate: payload => ipcRenderer.invoke('db:mutate', payload),
