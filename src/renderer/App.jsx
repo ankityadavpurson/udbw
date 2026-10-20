@@ -236,6 +236,11 @@ export default function App() {
         tabsApi.addTab();
         return;
       }
+      if (mod && key === 'w' && !event.altKey && active) {
+        event.preventDefault();
+        tabsApi.closeTab(tab.id);
+        return;
+      }
       if (mod && key === 'r' && !event.altKey) {
         event.preventDefault();
         refreshObjectsOrConnections();
@@ -298,6 +303,10 @@ export default function App() {
         <div className="flex min-h-0 flex-1">
           {isMd && <aside className="shrink-0">{sidebar(() => {}, false, !isLg)}</aside>}
           <main className="min-w-0 flex-1 overflow-y-auto">
+            <h1 className="sr-only">{active ? `UDBW, ${active.name}` : 'UDBW database workbench'}</h1>
+            <div className="sr-only" role="status" aria-live="polite">
+              {status}
+            </div>
             <Stack gap={0} className="min-h-full">
               <ConnectionToolbar
                 active={active}

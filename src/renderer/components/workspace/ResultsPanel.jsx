@@ -86,6 +86,7 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
         </Alert>
       </div>
     ) : null;
+  const copyCell = value => onCopyRows(typeof value === 'object' && value !== null ? value : plainText(value));
   const columns = table.columns.map((column, j) => ({
     key: `c${j}`,
     sortable: true,
@@ -97,8 +98,15 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
       <div
         className="max-w-[26rem] [overflow-wrap:anywhere]"
         style={widths[`c${j}`] ? { maxWidth: widths[`c${j}`] - 24 } : undefined}
-        title="Double-click to copy"
-        onDoubleClick={() => onCopyRows(typeof row[`c${j}`] === 'object' && row[`c${j}`] !== null ? row[`c${j}`] : plainText(row[`c${j}`]))}
+        title="Double-click or press Ctrl+C to copy"
+        tabIndex={0}
+        onDoubleClick={() => copyCell(row[`c${j}`])}
+        onKeyDown={e => {
+          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+            e.preventDefault();
+            copyCell(row[`c${j}`]);
+          }
+        }}
       >
         <NestedValue value={row[`c${j}`]} />
       </div>
@@ -121,7 +129,7 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
       );
     if (error)
       return (
-        <div className="p-4">
+        <div className="p-4" role="alert">
           <Alert tone="danger" title={meta === 'Connection failed' ? 'Connection failed' : 'Query failed'}>
             <span className="whitespace-pre-wrap">{error}</span>
           </Alert>

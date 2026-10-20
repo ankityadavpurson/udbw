@@ -112,7 +112,7 @@ export default function DocumentList({ documents, canEdit, onUpdate, onClone, on
                 }}
               >
                 <span className="shrink-0 [&>svg]:h-4 [&>svg]:w-4">{isOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>
-                <span className="w-6 shrink-0 text-right text-[10px] text-app-muted">{index + 1}</span>
+                <span className="w-6 shrink-0 text-right text-[11px] text-app-muted">{index + 1}</span>
                 <span className="shrink-0 font-mono text-xs font-semibold" title={idOf(doc)}>
                   {idOf(doc).length > 10 ? `…${idOf(doc).slice(-8)}` : idOf(doc) || '—'}
                 </span>

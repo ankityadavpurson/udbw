@@ -3,6 +3,8 @@ import StatusDot from '../StatusDot.jsx';
 
 const ENV_TONE = { production: 'danger', staging: 'warning', development: 'success' };
 
+const STATUS_LABEL = { connected: 'Connected', connecting: 'Connecting…', failed: 'Connection failed', disconnected: 'Disconnected' };
+
 export default function ConnectionToolbar({
   active,
   engine,
@@ -29,6 +31,7 @@ export default function ConnectionToolbar({
         )}
         {active && <StatusDot state={status} />}
         <strong className="truncate text-sm">{active?.name || 'No connection selected'}</strong>
+        {active && <span className="shrink-0 text-xs text-app-muted">{STATUS_LABEL[status] || 'Disconnected'}</span>}
         {active?.environment && (
           <Chip size="sm" tone={ENV_TONE[active.environment]} filled={active.environment === 'production'}>
             {active.environment}

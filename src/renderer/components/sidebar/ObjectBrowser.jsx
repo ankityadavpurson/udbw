@@ -40,9 +40,9 @@ export default function ObjectBrowser({ active, isConnected, connecting, tree, s
                 {item.signature || item.name}
               </span>
               {item.columns?.length ? (
-                <span className="ml-auto shrink-0 text-[10px] text-app-muted">{item.columns.length} cols</span>
+                <span className="ml-auto shrink-0 text-[11px] text-app-muted">{item.columns.length} cols</span>
               ) : item.metadata && item.type !== 'collection' ? (
-                <span className="ml-auto shrink-0 text-[10px] text-app-muted">{item.metadata}</span>
+                <span className="ml-auto shrink-0 text-[11px] text-app-muted">{item.metadata}</span>
               ) : null}
             </span>
           )
@@ -54,7 +54,7 @@ export default function ObjectBrowser({ active, isConnected, connecting, tree, s
   return (
     <Stack gap={2} className="compact-fields p-2">
       <Flex justify="between" align="center">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-app-muted">Database objects</span>
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-app-muted">Database objects</span>
         <Button variant="flat" tooltip="Refresh objects" aria-label="Refresh objects" disabled={treeLoading} onClick={() => loadObjectTree()}>
           <RefreshIcon />
         </Button>

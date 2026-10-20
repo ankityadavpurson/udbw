@@ -1,6 +1,6 @@
 import { Button, Chip, Flex, HelperText, Modal, Stack } from 'xedonium';
 
-const Heading = ({ children }) => <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-app-muted">{children}</h3>;
+const Heading = ({ children }) => <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-widest text-app-muted">{children}</h3>;
 
 // Columns, primary key and indexes of the opened table (read by describe when the table was opened).
 export default function StructureDialog({ open, onClose, object }) {
