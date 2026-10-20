@@ -113,6 +113,9 @@ app.whenReady().then(async () => {
     if (!win) throw new Error('the main window never loaded (did you run `yarn build:ui`?)');
     const problems = [];
     win.webContents.on('console-message', (_event, level, message) => {
+      // The page asks before unloading while a debounced save of the settings is still pending; a test that reloads
+      // right after changing state can hit that window on a slow machine. It is not an error in the app.
+      if (/beforeunload/.test(message)) return;
       if (level >= 2 || /Content Security|Uncaught/.test(message)) problems.push(message);
     });
     const run = code => win.webContents.executeJavaScript(code);
