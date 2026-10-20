@@ -151,6 +151,7 @@ app.whenReady().then(async () => {
     const text = () => run('window.__t.text()');
     const lastQuery = () => received.filter(r => r.kind === 'query').pop();
 
+    check('a run from source is marked [DEV] in the title bar', /\[DEV\]/.test(await text()));
     check('UI renders the saved connection and its environment', /production/.test(await text()));
     await run(`window.__t.click('Connect')`);
     await sleep(1500);

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import Logo from './Logo.jsx';
 
 // Our own title bar (the window runs with a hidden native one). The system window buttons are drawn by
@@ -5,6 +6,10 @@ import Logo from './Logo.jsx';
 const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
 
 export default function TitleBar() {
+  const isDev = Boolean(window.workbench?.isDev);
+  useEffect(() => {
+    if (isDev) document.title = 'UDBW [DEV]';
+  }, [isDev]);
   return (
     <div
       className="flex h-[30px] shrink-0 select-none items-center gap-2 border-b border-app-border bg-app-card text-app-text"
@@ -16,6 +21,7 @@ export default function TitleBar() {
     >
       <Logo />
       <span className="truncate text-xs font-semibold">UDBW</span>
+      {isDev && <span className="shrink-0 text-xs font-semibold text-[#e0bf00]">[DEV]</span>}
     </div>
   );
 }
