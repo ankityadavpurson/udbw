@@ -8,7 +8,6 @@ import {
   CodeDisplay,
   CopyIcon,
   DataGrid,
-  DatabaseIcon,
   Divider,
   DownloadIcon,
   EditIcon,
@@ -33,6 +32,7 @@ import { isDocumentResult, toRecords, toTable } from '../../lib/results.js';
 import BrowseBar from './BrowseBar.jsx';
 import DocumentList from './DocumentList.jsx';
 import StructureDialog from '../dialogs/StructureDialog.jsx';
+import Logo from '../Logo.jsx';
 import NestedValue, { plainText } from './NestedValue.jsx';
 
 const MAX_LOAD = 100000;
@@ -138,7 +138,7 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
     if (!result)
       return (
         <Stack gap={3} className="flex-1 items-center justify-center px-6 py-14 text-center">
-          <DatabaseIcon className="h-9 w-9 text-app-muted" />
+          <Logo className="h-12 w-12" />
           <h2 className="text-lg font-semibold">Your databases, one workspace</h2>
           <HelperText>Create a connection, connect, then browse an object or run a query.</HelperText>
           <Flex gap={2} wrap justify="center">
