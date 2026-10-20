@@ -115,7 +115,7 @@ async function askNatively(win) {
     defaultId: 0,
     cancelId: 0,
     title: 'Unsaved changes',
-    message: `You have ${unsavedChanges} unsaved change${unsavedChanges === 1 ? '' : 's'} in a table.`,
+    message: `You have ${unsavedChanges} unsaved change${unsavedChanges === 1 ? '' : 's'} .`,
     detail: 'They have not been applied to the database. Quitting now discards them.'
   });
   return response === 1;

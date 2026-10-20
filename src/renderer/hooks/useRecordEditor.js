@@ -8,6 +8,7 @@ export default function useRecordEditor({ active, tab, runQuery, runMutation, se
   const [editorOpen, setEditorOpen] = useState(false);
   const [action, setAction] = useState('insert');
   const [jsonText, setJsonText] = useState('{}');
+  const [startText, setStartText] = useState('{}'); // what the dialog opened with
   const [error, setError] = useState('');
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -27,7 +28,9 @@ export default function useRecordEditor({ active, tab, runQuery, runMutation, se
   function openEditor(nextAction) {
     if (!selectedObject) return;
     setAction(nextAction);
-    setJsonText(nextAction === 'edit' && selectedJson ? JSON.stringify(selectedJson, null, 2) : '{}');
+    const initial = nextAction === 'edit' && selectedJson ? JSON.stringify(selectedJson, null, 2) : '{}';
+    setJsonText(initial);
+    setStartText(initial);
     setError('');
     setEditorOpen(true);
   }
@@ -138,6 +141,7 @@ export default function useRecordEditor({ active, tab, runQuery, runMutation, se
     action,
     jsonText,
     setJsonText,
+    editorDirty: editorOpen && action !== 'delete' && jsonText !== startText,
     error,
     hasSelection,
     selectedCount,

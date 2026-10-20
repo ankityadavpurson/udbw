@@ -73,9 +73,11 @@ export default function App() {
     setStatus
   });
   // Lets the main process ask before the window closes while edits are unsaved.
+  const [documentDirty, setDocumentDirty] = useState(0);
+  const unsaved = gridEdits.totalPending + documentDirty + (records.editorDirty ? 1 : 0);
   useEffect(() => {
-    window.workbench.reportUnsaved(gridEdits.totalPending);
-  }, [gridEdits.totalPending]);
+    window.workbench.reportUnsaved(unsaved);
+  }, [unsaved]);
   // The main process asks here, in the themed UI, before the window closes with unsaved edits.
   const [discardAsk, setDiscardAsk] = useState(0);
   useEffect(() => window.workbench.onAskDiscard(count => setDiscardAsk(count || 1)), []);
@@ -380,6 +382,7 @@ export default function App() {
                 status={status}
                 records={records}
                 gridEdits={gridEdits}
+                onDocumentDirty={setDocumentDirty}
                 isConnected={isConnected}
                 busy={busy}
                 readOnly={Boolean(active?.readOnly)}
@@ -402,7 +405,7 @@ export default function App() {
       </Drawer>
 
       <ConnectionDialog dialog={dialog} groups={[...new Set(conn.profiles.map(p => p.group?.trim() || 'Connections'))]} />
-      <RecordEditorDialog records={records} objectName={tab.selectedObject?.name} />
+      <RecordEditorDialog records={records} objectName={records.selectedObject?.name} documentMode={language === 'command'} />
       <RecordViewerDialog open={records.viewerOpen} onClose={() => records.setViewerOpen(false)} record={records.selectedJson} onCopy={copyText} />
       <ConfirmDialog
         open={discardAsk > 0}
@@ -413,7 +416,7 @@ export default function App() {
         onClose={() => answerDiscard(false)}
         onConfirm={() => answerDiscard(true)}
       >
-        You have {discardAsk} unsaved change{discardAsk === 1 ? '' : 's'} in a table. They have not been applied to the database, and quitting now discards them.
+        You have {discardAsk} unsaved change{discardAsk === 1 ? '' : 's'} . They have not been applied to the database, and quitting now discards them.
       </ConfirmDialog>
       <ConfirmDialog
         open={records.bulkOpen}

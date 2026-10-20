@@ -45,6 +45,7 @@ export default function ResultsPanel({
   status,
   records,
   gridEdits,
+  onDocumentDirty,
   isConnected,
   busy,
   readOnly,
@@ -223,6 +224,7 @@ export default function ResultsPanel({
           onClone={records.cloneDocument}
           onDelete={records.deleteDocument}
           onInsert={() => records.openEditor('insert')}
+          onDirtyChange={onDocumentDirty}
         />
       );
     if (view === 'json')
