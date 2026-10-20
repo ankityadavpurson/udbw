@@ -1,4 +1,4 @@
-const { normalizePgResult, buildSqlMutation, mutationResult } = require('./sql');
+const { normalizePgResult, buildSqlMutation, mutationResult, applyBatch } = require('./sql');
 const { capSql, sqlIsWrite } = require('../sqlText');
 const { logger } = require('../logger');
 
@@ -89,6 +89,17 @@ async function mutate(session, op) {
   return mutationResult(op.action, result.rowCount);
 }
 
+async function mutateBatch(session, ops) {
+  const client = session.client;
+  return applyBatch(ops, {
+    dialect: 'postgres',
+    begin: () => client.query('BEGIN'),
+    run: async (sql, params) => (await client.query(sql, params)).rowCount,
+    commit: () => client.query('COMMIT'),
+    rollback: () => client.query('ROLLBACK')
+  });
+}
+
 const KIND = {
   r: { type: 'table', metadata: '' },
   p: { type: 'table', metadata: 'partitioned table' },
@@ -153,4 +164,4 @@ async function describe(session, object) {
   };
 }
 
-module.exports = { connect, close, query, cancel, mutate, discover, describe, isWrite };
+module.exports = { connect, close, query, cancel, mutate, mutateBatch, discover, describe, isWrite };

@@ -44,6 +44,10 @@ const fake = {
     received.push({ kind: 'mutate', op });
     return { columns: [], rows: [], rowCount: 1, message: 'Updated 1 row(s)' };
   },
+  async mutateBatch(_session, ops) {
+    received.push({ kind: 'mutateBatch', ops });
+    return { columns: [], rows: [], rowCount: ops.length, message: 'Updated 1 row(s) in one transaction' };
+  },
   async cancel() {
     received.push({ kind: 'cancel' });
     fake.interrupt?.();
@@ -128,6 +132,32 @@ app.whenReady().then(async () => {
     check('and browses page 1 with one extra row', lastQuery()?.text === 'SELECT * FROM `shop`.`users` LIMIT 101 OFFSET 0;', lastQuery()?.text);
     const page = await text();
     check('the page shows 100 rows and a page indicator', /Page 1/.test(page) && /user 100/.test(page) && !/user 101\b/.test(page));
+    // Inline editing: change a cell, see it pending, then apply it as one transaction.
+    await run(`void (() => {
+      const cell = [...document.querySelectorAll('td div[title*="F2"]')].find(el => el.textContent.trim() === 'user 2');
+      cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    })()`);
+    await sleep(300);
+    await run(`void (() => {
+      const input = document.querySelector('input[aria-label="Edit name"]');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'renamed');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    })()`);
+    await sleep(300);
+    check('an edited cell shows as a pending change', /1 pending change/.test(await text()) && /renamed/.test(await text()));
+    await run(`window.__t.click('Apply changes')`);
+    await sleep(1200);
+    const batch = received.filter(r => r.kind === 'mutateBatch').pop();
+    check(
+      'Apply sends one batch with only the changed column',
+      batch?.ops.length === 1 &&
+        batch.ops[0].action === 'update' &&
+        JSON.stringify(batch.ops[0].key) === '{"id":"2"}' &&
+        JSON.stringify(batch.ops[0].changes) === '{"name":"renamed"}',
+      JSON.stringify(batch)
+    );
+    check('the pending bar clears once the changes are saved', !/pending change/.test(await text()));
     await run(`document.querySelector('button[aria-label="Next page"]')?.click()`);
     await sleep(800);
     check('next page asks for OFFSET 100', /OFFSET 100/.test(lastQuery()?.text || ''), lastQuery()?.text);

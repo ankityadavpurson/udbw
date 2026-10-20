@@ -126,3 +126,51 @@ describe('result shaping', () => {
     expect(normalizePgResult({ fields: [], rows: [], rowCount: 4, command: 'DELETE' }, 10).message).toBe('DELETE · 4 row(s)');
   });
 });
+
+describe('applyBatch', () => {
+  const { applyBatch } = require('../../src/main/connectors/sql.js');
+  const driver = (affected = [], log = []) => ({
+    dialect: 'postgres',
+    begin: async () => log.push('begin'),
+    run: async sql => {
+      log.push(sql);
+      return affected.length ? affected.shift() : 1;
+    },
+    commit: async () => log.push('commit'),
+    rollback: async () => log.push('rollback')
+  });
+  const ops = [
+    { action: 'update', object: { name: 't' }, key: { id: 1 }, changes: { a: 'x' } },
+    { action: 'insert', object: { name: 't' }, record: { a: 'y' } }
+  ];
+
+  it('commits every change in one transaction', async () => {
+    const log = [];
+    const result = await applyBatch(ops, driver([], log));
+    expect(log[0]).toBe('begin');
+    expect(log.at(-1)).toBe('commit');
+    expect(result.message).toBe('Inserted 1, Updated 1 row(s) in one transaction');
+  });
+  it('rolls back when an update touches no row', async () => {
+    const log = [];
+    await expect(applyBatch(ops, driver([0], log))).rejects.toThrow(/Change 1 \(update\) affected 0 rows/);
+    expect(log).toContain('rollback');
+    expect(log).not.toContain('commit');
+  });
+  it('rolls back when a statement fails', async () => {
+    const log = [];
+    const failing = {
+      ...driver([], log),
+      run: async () => {
+        throw new Error('boom');
+      }
+    };
+    await expect(applyBatch(ops, failing)).rejects.toThrow('boom');
+    expect(log).toEqual(['begin', 'rollback']);
+  });
+  it('rejects an empty batch before opening a transaction', async () => {
+    const log = [];
+    await expect(applyBatch([], driver([], log))).rejects.toThrow(/no changes/);
+    expect(log).toEqual([]);
+  });
+});

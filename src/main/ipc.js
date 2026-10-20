@@ -41,6 +41,9 @@ function registerIpc() {
   ipcMain.on('log:renderer', (event, entry) => {
     if (fromMainWindow(event)) logger.error('[renderer]', String(entry?.message || '').slice(0, 1000), String(entry?.stack || '').slice(0, 3000));
   });
+  ipcMain.on('unsaved:report', (event, count) => {
+    if (fromMainWindow(event)) windowState.setUnsavedChanges(count);
+  });
   ipcMain.on('theme:report', (event, theme) => {
     if (fromMainWindow(event)) windowState.applyTheme(theme);
   });
@@ -155,6 +158,18 @@ function registerIpc() {
   );
 
   // Structured insert / update / delete from the record editors; values are never assembled into query text.
+  // Several structured changes in one transaction (SQL engines only).
+  handle('db:mutate-batch', ({ id, ops }) =>
+    attempt(async () => ({
+      result: await sessions.withSession(id, s => {
+        if (s.profile.readOnly) throw readOnlyError();
+        const connector = sessions.connectorFor(s.type);
+        if (!connector.mutateBatch) throw new Error('This database does not support applying several changes at once.');
+        return connector.mutateBatch(s, ops);
+      })
+    }))
+  );
+
   handle('db:mutate', ({ id, op }) =>
     attempt(async () => ({
       result: await sessions.withSession(id, s => {

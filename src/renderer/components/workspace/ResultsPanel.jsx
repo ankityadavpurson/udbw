@@ -34,11 +34,29 @@ import DocumentList from './DocumentList.jsx';
 import StructureDialog from '../dialogs/StructureDialog.jsx';
 import Logo from '../Logo.jsx';
 import NestedValue, { plainText } from './NestedValue.jsx';
+import CellEditor from './CellEditor.jsx';
+import PendingChangesBar from './PendingChangesBar.jsx';
 
 const MAX_LOAD = 100000;
 const MAX_RENDERED_ROWS = 100; // the grid pages rows client-side, so a big browse page never renders every row at once
 
-export default function ResultsPanel({ tab, status, records, isConnected, busy, readOnly, language, onViewChange, onSelect, onRerun, onCopyRows, onExport, onLoadMore, onBrowse }) {
+export default function ResultsPanel({
+  tab,
+  status,
+  records,
+  gridEdits,
+  isConnected,
+  busy,
+  readOnly,
+  language,
+  onViewChange,
+  onSelect,
+  onRerun,
+  onCopyRows,
+  onExport,
+  onLoadMore,
+  onBrowse
+}) {
   const { result, error, view, meta, selected } = tab;
   const [structureOpen, setStructureOpen] = useState(false);
   const object = tab.selectedObject;
@@ -87,38 +105,86 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
       </div>
     ) : null;
   const copyCell = value => onCopyRows(typeof value === 'object' && value !== null ? value : plainText(value));
+  // Inline editing: only for a table opened from the sidebar whose rows can be located by primary key.
+  const inline = Boolean(gridEdits?.editable && browsing && !readOnly && isConnected);
+  const keyColumns = tab.selectedObject?.primaryKey || [];
+  const [cellEditing, setCellEditing] = useState(null); // { key, column }
   const columns = table.columns.map((column, j) => ({
     key: `c${j}`,
     sortable: true,
     accessor: row => plainText(row[`c${j}`]),
     width: widths[`c${j}`],
     header: <ResizableHeader label={column} onResize={width => setWidths(all => ({ ...all, [`c${j}`]: width }))} />,
-    // Double-click a cell to copy its value.
-    render: row => (
-      <div
-        className="max-w-[26rem] [overflow-wrap:anywhere]"
-        style={widths[`c${j}`] ? { maxWidth: widths[`c${j}`] - 24 } : undefined}
-        title="Double-click or press Ctrl+C to copy"
-        tabIndex={0}
-        onDoubleClick={() => copyCell(row[`c${j}`])}
-        onKeyDown={e => {
-          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
-            e.preventDefault();
-            copyCell(row[`c${j}`]);
-          }
-        }}
-      >
-        <NestedValue value={row[`c${j}`]} />
-      </div>
-    )
+    // Double-click a cell to copy its value, or to edit it when the table can be edited in place.
+    render: row => {
+      const editing = inline && cellEditing && cellEditing.key === row.__i && cellEditing.column === column;
+      const locked = !inline || row.__deleted || keyColumns.includes(column);
+      const dirty = row.__dirty?.has(column) || (row.__new && row[`c${j}`] !== undefined);
+      if (editing)
+        return (
+          <CellEditor
+            value={row[`c${j}`]}
+            label={`Edit ${column}`}
+            onCommit={value => {
+              setCellEditing(null);
+              gridEdits.setCell(row.__i, column, value);
+            }}
+            onCancel={() => setCellEditing(null)}
+          />
+        );
+      const startEdit = () => !locked && setCellEditing({ key: row.__i, column });
+      return (
+        <div
+          className={`max-w-[26rem] [overflow-wrap:anywhere] ${dirty ? 'bg-app-strong/20 shadow-[inset_0_0_0_1px_rgb(var(--color-app-strong))]' : ''} ${row.__deleted ? 'text-app-muted line-through' : ''}`}
+          style={widths[`c${j}`] ? { maxWidth: widths[`c${j}`] - 24 } : undefined}
+          title={locked ? 'Double-click or press Ctrl+C to copy' : 'Double-click or press F2 to edit · Ctrl+C to copy'}
+          tabIndex={0}
+          onDoubleClick={() => (locked ? copyCell(row[`c${j}`]) : startEdit())}
+          onKeyDown={e => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+              e.preventDefault();
+              copyCell(row[`c${j}`]);
+            } else if (e.key === 'F2' || (e.key === 'Enter' && !locked)) {
+              e.preventDefault();
+              startEdit();
+            }
+          }}
+        >
+          {row.__new && row[`c${j}`] === undefined ? <span className="text-app-muted">default</span> : <NestedValue value={row[`c${j}`]} />}
+          {row.__dirty?.has(column) && (
+            <span className="ml-1 inline-block max-w-[10rem] truncate align-bottom text-[11px] text-app-muted" title={`Original value: ${plainText(row.__original?.[column])}`}>
+              was {plainText(row.__original?.[column])}
+            </span>
+          )}
+        </div>
+      );
+    }
   }));
   const searchIndex = table.columns.indexOf(search.column);
   const needle = search.text.trim().toLowerCase();
-  const rows = table.rows
-    .map((row, index) => Object.fromEntries([['__i', index], ...row.map((value, j) => [`c${j}`, value])]))
+  const pendingEdits = inline ? gridEdits.pending : null;
+  const existingRows = table.rows
+    .map((row, index) => {
+      const changes = pendingEdits?.edits[index];
+      const values = changes ? row.map((value, j) => (table.columns[j] in changes ? changes[table.columns[j]] : value)) : row;
+      const record = Object.fromEntries([['__i', index], ...values.map((value, j) => [`c${j}`, value])]);
+      if (changes) {
+        record.__dirty = new Set(Object.keys(changes));
+        record.__original = Object.fromEntries(table.columns.map((column, j) => [column, row[j]]));
+      }
+      if (pendingEdits?.deleted.includes(index)) record.__deleted = true;
+      return record;
+    })
     .filter(
       row => !needle || (searchIndex >= 0 ? [row[`c${searchIndex}`]] : table.columns.map((_, j) => row[`c${j}`])).some(value => plainText(value).toLowerCase().includes(needle))
     );
+  // New rows come first; a column the user has not filled in is left out of the INSERT so the database default applies.
+  const newRows = (pendingEdits?.added || []).map(added => ({
+    __i: added.id,
+    __new: true,
+    ...Object.fromEntries(table.columns.map((column, j) => [`c${j}`, added.values[column]]))
+  }));
+  const rows = [...newRows, ...existingRows];
 
   const body = () => {
     if (slow)
@@ -184,14 +250,18 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
           <Button
             variant="secondary"
             disabled={readOnly || !records.selectedObject || !['table', 'collection'].includes(records.selectedObject.type)}
-            onClick={() => openEditor('insert')}
+            onClick={() => (inline ? gridEdits.addRow() : openEditor('insert'))}
           >
             <PlusIcon /> Insert
           </Button>
           <Button variant="secondary" disabled={readOnly || !canEditSelected} onClick={() => openEditor('edit')}>
             <EditIcon /> Edit
           </Button>
-          <Button variant="danger" disabled={readOnly || !canDeleteSelected} onClick={() => (selectedCount > 1 ? setBulkOpen(true) : openEditor('delete'))}>
+          <Button
+            variant="danger"
+            disabled={readOnly || !canDeleteSelected}
+            onClick={() => (inline ? gridEdits.markDeleted(selected.filter(i => typeof i === 'number')) : selectedCount > 1 ? setBulkOpen(true) : openEditor('delete'))}
+          >
             <Trash2Icon /> {selectedCount > 1 ? `Delete ${selectedCount}` : 'Delete'}
           </Button>
           <Divider orientation="vertical" className="h-6" />
@@ -205,6 +275,8 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
             <RefreshIcon />
           </Button>
         </Flex>
+        {inline && <PendingChangesBar edits={gridEdits} dialect={language} onCopy={onCopyRows} />}
+        {inline && !gridEdits.counts.total && <HelperText className="px-2">Double-click a cell or press F2 to edit it. Changes are saved together in one transaction.</HelperText>}
         <Flex gap={2} align="center" className="compact-fields px-2">
           <div className="w-44">
             <Select
@@ -232,7 +304,7 @@ export default function ResultsPanel({ tab, status, records, isConnected, busy, 
           pageSizeOptions={browsing ? undefined : [25, 50, 100, 250]}
           hideFooterWhenSinglePage
           selected={selected}
-          onSelectionChange={onSelect}
+          onSelectionChange={keys => onSelect(keys.filter(key => typeof key === 'number'))}
           empty="No rows returned."
           caption="Query results"
           className="compact-grid !gap-2 [&_div.overflow-x-auto]:!border-x-0 [&>div:last-child]:px-2"
