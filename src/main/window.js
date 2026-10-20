@@ -5,7 +5,7 @@ const { logger, logFile } = require('./logger');
 
 // Custom title bar: the native one is hidden and Electron draws only the window buttons, in these colours.
 // The overlay is one pixel shorter than the bar so the bar's bottom border shows under the window buttons.
-const TITLE_BAR = { height: 30, dark: { color: '#1f1f1f', symbolColor: '#ffffff' }, light: { color: '#ffffff', symbolColor: '#151515' } };
+const TITLE_BAR = { height: 30, dark: { color: '#141414', symbolColor: '#ffffff' }, light: { color: '#ffffff', symbolColor: '#0d0d0d' } };
 const SPLASH_MIN_MS = 700; // avoid a flash when the UI is ready almost immediately
 const SPLASH_MAX_MS = 15000; // never leave the splash up if the UI fails to report
 
@@ -80,7 +80,7 @@ function createSplash() {
     show: false,
     alwaysOnTop: true,
     skipTaskbar: true,
-    backgroundColor: '#252529',
+    backgroundColor: '#0d0d0d',
     title: 'UDBW',
     icon: path.join(root, 'build', 'icon.png'),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
@@ -130,7 +130,7 @@ function createWindow() {
     ...restored.bounds,
     minWidth: 1000,
     minHeight: 680,
-    backgroundColor: '#101116',
+    backgroundColor: '#0d0d0d',
     title: 'UDBW',
     icon: path.join(root, 'build', 'icon.png'),
     webPreferences: {

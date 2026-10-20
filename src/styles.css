@@ -2,6 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme: neutral greys with a purple accent (palette taken from render.com). Overrides the xedonium tokens. */
+:root {
+  --xd-tok-keyword: #6d28d9;
+  --color-app-bg: 250 250 250;
+  --color-app-card: 255 255 255;
+  --color-app-border: 227 227 227;
+  --color-app-text: 13 13 13;
+  --color-app-muted: 107 107 107;
+  --color-app-soft: 72 0 140;
+  --color-app-strong: 138 5 255;
+}
+html[data-theme='dark'] {
+  --xd-tok-keyword: #aa77fd;
+  --color-app-bg: 13 13 13;
+  --color-app-card: 20 20 20;
+  --color-app-border: 58 58 58;
+  --color-app-text: 255 255 255;
+  --color-app-muted: 179 179 179;
+  --color-app-soft: 194 158 255;
+  --color-app-strong: 170 119 253;
+}
+/* Solid purple buttons with white text in both themes. */
+button.bg-app-strong.text-app-bg {
+  background-color: #8a05ff;
+  border-color: #8a05ff;
+  color: #fff;
+}
+button.bg-app-strong.text-app-bg:hover:not(:disabled) {
+  background-color: #aa77fd;
+  border-color: #aa77fd;
+}
+
 html,
 body,
 #root {
