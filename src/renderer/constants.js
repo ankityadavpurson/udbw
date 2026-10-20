@@ -5,14 +5,14 @@ export const engines = {
     label: 'MongoDB',
     icon: 'MO',
     query: 'collections',
-    help: 'Mongo mode · collections · find users {"age":{"$gt":30}} SORT {"age":-1} LIMIT 20 · count · aggregate · or db.users.find({ … }).'
+    help: 'Mongo mode · `collections` · `find users {"age":{"$gt":30}} SORT {"age":-1} LIMIT 20` · `count` · `aggregate` · or `db.users.find({ … })`.'
   },
-  supabase: { label: 'Supabase', icon: 'SB', query: 'SELECT current_database(), current_user;', help: 'SQL mode uses PostgreSQL. REST mode: REST: table_name LIMIT 100' },
+  supabase: { label: 'Supabase', icon: 'SB', query: 'SELECT current_database(), current_user;', help: 'SQL mode uses PostgreSQL. REST mode: `REST: table_name LIMIT 100`' },
   firestore: {
     label: 'Firebase Firestore',
     icon: 'FS',
     query: 'collections',
-    help: 'Firestore mode · collections · read users WHERE age >= 18 ORDER BY age DESC LIMIT 20 · count users · users/abc/orders for subcollections.'
+    help: 'Firestore mode · `collections` · `read users WHERE age >= 18 ORDER BY age DESC LIMIT 20` · `count users` · `users/abc/orders` for subcollections.'
   }
 };
 

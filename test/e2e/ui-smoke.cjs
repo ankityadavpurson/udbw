@@ -44,6 +44,10 @@ const fake = {
     received.push({ kind: 'mutate', op });
     return { columns: [], rows: [], rowCount: 1, message: 'Updated 1 row(s)' };
   },
+  async mutateBatch(_session, ops) {
+    received.push({ kind: 'mutateBatch', ops });
+    return { columns: [], rows: [], rowCount: ops.length, message: 'Updated 1 row(s) in one transaction' };
+  },
   async cancel() {
     received.push({ kind: 'cancel' });
     fake.interrupt?.();
@@ -67,6 +71,35 @@ const fake = {
   async switchDatabase() {},
   isWrite: text => !/^\s*(select|show|describe|explain)/i.test(text)
 };
+// A second fake, for MongoDB: one collection with one document.
+const doc = { _id: 'd1', name: 'Asha', age: 30, address: { city: 'Pune' }, tags: ['vip'] };
+const fakeMongo = {
+  async connect() {
+    return { type: 'mongodb', client: {} };
+  },
+  async close() {},
+  async query(_session, text) {
+    received.push({ kind: 'mquery', text });
+    return { json: [doc], columns: ['_id', 'document'], rows: [['d1', JSON.stringify(doc)]], rowCount: 1, message: '1 document' };
+  },
+  async mutate(_session, op) {
+    received.push({ kind: 'mmutate', op });
+    return { columns: [], rows: [], rowCount: 1, message: 'Updated 1 document' };
+  },
+  async cancel() {
+    return true;
+  },
+  async discover() {
+    return { databases: ['shop'], schemas: [], message: '', objects: [{ name: 'people', type: 'collection' }] };
+  },
+  async describe() {
+    return { columns: [], columnInfo: [], primaryKey: ['_id'], indexes: [] };
+  },
+  async switchDatabase() {},
+  isWrite: () => false
+};
+const mongoPath = require.resolve(path.join(root, 'src', 'main', 'connectors', 'mongodb.js'));
+require.cache[mongoPath] = { id: mongoPath, filename: mongoPath, loaded: true, exports: fakeMongo };
 const fakePath = require.resolve(path.join(root, 'src', 'main', 'connectors', 'mysql.js'));
 require.cache[fakePath] = { id: fakePath, filename: fakePath, loaded: true, exports: fake };
 
@@ -103,14 +136,15 @@ app.whenReady().then(async () => {
     win.webContents.reload();
     await sleep(2500);
 
-    await run(`void (window.__t = {
+    const helpers = `void (window.__t = {
       buttons: () => [...document.querySelectorAll('button')],
       byText: t => [...document.querySelectorAll('button, [role=menuitem], [role=tab], li, [role=treeitem]')].filter(el => el.textContent.trim().toLowerCase().includes(t.toLowerCase())).sort((a, b) => a.textContent.length - b.textContent.length)[0],
       click: t => { const el = window.__t.byText(t); if (!el) return false; (el.getAttribute('role') === 'treeitem' ? el.querySelector('div') : el).click(); return true; },
       setEditor: v => { const ta = document.querySelector('textarea[aria-label="Query editor"]'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, v); ta.dispatchEvent(new Event('input', { bubbles: true })); ta.focus(); ta.setSelectionRange(v.length, v.length); },
       editor: () => document.querySelector('textarea[aria-label="Query editor"]')?.value,
       text: () => document.body.innerText
-    })`);
+    })`;
+    await run(helpers);
     const text = () => run('window.__t.text()');
     const lastQuery = () => received.filter(r => r.kind === 'query').pop();
 
@@ -128,6 +162,32 @@ app.whenReady().then(async () => {
     check('and browses page 1 with one extra row', lastQuery()?.text === 'SELECT * FROM `shop`.`users` LIMIT 101 OFFSET 0;', lastQuery()?.text);
     const page = await text();
     check('the page shows 100 rows and a page indicator', /Page 1/.test(page) && /user 100/.test(page) && !/user 101\b/.test(page));
+    // Inline editing: change a cell, see it pending, then apply it as one transaction.
+    await run(`void (() => {
+      const cell = [...document.querySelectorAll('td div[title*="F2"]')].find(el => el.textContent.trim() === 'user 2');
+      cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    })()`);
+    await sleep(300);
+    await run(`void (() => {
+      const input = document.querySelector('input[aria-label="Edit name"]');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'renamed');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    })()`);
+    await sleep(300);
+    check('an edited cell shows as a pending change', /1 pending change/.test(await text()) && /renamed/.test(await text()));
+    await run(`window.__t.click('Apply changes')`);
+    await sleep(1200);
+    const batch = received.filter(r => r.kind === 'mutateBatch').pop();
+    check(
+      'Apply sends one batch with only the changed column',
+      batch?.ops.length === 1 &&
+        batch.ops[0].action === 'update' &&
+        JSON.stringify(batch.ops[0].key) === '{"id":"2"}' &&
+        JSON.stringify(batch.ops[0].changes) === '{"name":"renamed"}',
+      JSON.stringify(batch)
+    );
+    check('the pending bar clears once the changes are saved', !/pending change/.test(await text()));
     await run(`document.querySelector('button[aria-label="Next page"]')?.click()`);
     await sleep(800);
     check('next page asks for OFFSET 100', /OFFSET 100/.test(lastQuery()?.text || ''), lastQuery()?.text);
@@ -180,6 +240,59 @@ app.whenReady().then(async () => {
     win.webContents.reload();
     await sleep(2500);
     check('tabs come back after a restart', /users/.test(await run(`[...document.querySelectorAll('[role=tab]')].map(t => t.textContent).join('|')`)));
+
+    // Document tree editor on a MongoDB collection.
+    const mongo = {
+      id: 'p2',
+      name: 'Docs',
+      type: 'mongodb',
+      host: 'h',
+      port: '27017',
+      database: 'shop',
+      username: 'u',
+      password: 'pw',
+      environment: 'development',
+      readOnly: false
+    };
+    await run(
+      `window.workbench.saveConnections(${JSON.stringify({ profiles: [{ ...profile, password: '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' }, mongo], activeId: 'p2', lastQueries: {} })})`
+    );
+    await sleep(1200); // let the debounced save of the restored tabs finish, or the page asks before it unloads
+    win.webContents.reload();
+    await sleep(2500);
+    await run(helpers);
+    await run(`window.__t.click('Connect')`);
+    await sleep(1500);
+    await run(`window.__t.click('people')`);
+    await sleep(1500);
+    check('a collection opens as a document list', /1 document/.test(await text()) && /Asha/.test(await text()));
+    await run(`document.querySelector('button[aria-label^="Edit d1"]')?.click()`);
+    await sleep(400);
+    check(
+      'Edit opens the tree editor with typed fields',
+      await run(`!!document.querySelector('[aria-label="Document fields"]') && !!document.querySelector('[aria-label="Value of age"]')`)
+    );
+    check('the identifier is locked', await run(`!document.querySelector('[aria-label="Value of _id"]') && !document.querySelector('[aria-label="Remove _id"]')`));
+    await run(`void (() => {
+      const input = document.querySelector('input[aria-label="Value of age"]');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '31');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    await sleep(300);
+    await run(`window.__t.buttons().find(b => /^Changes/.test(b.textContent.trim()))?.click()`);
+    await sleep(300);
+    const windowState = require(path.join(root, 'src', 'main', 'window.js'));
+    check('an open document edit counts as unsaved, so closing would ask', windowState.hasUnsavedChanges());
+    check('the Changes view lists the edit', /- age: 30/.test(await text()) && /\+ age: 31/.test(await text()));
+    await run(`window.__t.buttons().find(b => b.textContent.trim() === 'Update')?.click()`);
+    await sleep(1000);
+    check('saving clears the unsaved state', !windowState.hasUnsavedChanges());
+    const docUpdate = received.filter(r => r.kind === 'mmutate').pop();
+    check(
+      'Update sends only the changed field',
+      docUpdate?.op.action === 'update' && JSON.stringify(docUpdate.op.changes) === '{"age":31}' && docUpdate.op.id === 'd1',
+      JSON.stringify(docUpdate)
+    );
 
     check('no console errors or CSP violations', problems.length === 0, problems.join(' || '));
     check('the app wrote a log file', fs.existsSync(path.join(userData, 'logs', 'main.log')));

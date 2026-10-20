@@ -1,33 +1,37 @@
-import { useState } from 'react';
-import {
-  Alert,
-  Button,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  CodeDisplay,
-  ConfirmDialog,
-  CopyIcon,
-  EditIcon,
-  Flex,
-  HelperText,
-  PlusIcon,
-  Stack,
-  TextArea,
-  Trash2Icon
-} from 'xedonium';
+import { useEffect, useState } from 'react';
+import { Alert, Button, ChevronDownIcon, ChevronRightIcon, CodeDisplay, ConfirmDialog, CopyIcon, EditIcon, Flex, HelperText, PlusIcon, Stack, Trash2Icon } from 'xedonium';
 import { summarizeDocument } from '../../lib/results.js';
+import DocumentEditor from './DocumentEditor.jsx';
+import { diffDocs } from '../../lib/docTree.js';
 
 const PAGE = 25;
+
+// Number of changed fields; text that is not valid JSON yet counts as one change when it differs from the document.
+function editDirtyCount(doc, text) {
+  try {
+    return diffDocs(doc, JSON.parse(text)).length;
+  } catch {
+    return text === JSON.stringify(doc, null, 2) ? 0 : 1;
+  }
+}
 const idOf = doc => String(doc?._id ?? doc?.id ?? '');
 
 // Documents as a compact list, edited in place like MongoDB Compass: every row shows the id and a few
 // recognisable fields, and expands to the full document. onUpdate / onClone / onDelete resolve { ok, error }.
-export default function DocumentList({ documents, canEdit, onUpdate, onClone, onDelete, onInsert }) {
+export default function DocumentList({ documents, canEdit, onUpdate, onClone, onDelete, onInsert, onDirtyChange }) {
   const [limit, setLimit] = useState(PAGE);
   const [open, setOpen] = useState(() => new Set()); // indexes of expanded documents
   const [editing, setEditing] = useState(null); // { index, text, error, saving }
   const [removing, setRemoving] = useState(null); // { doc, error, busy }
   const [notice, setNotice] = useState('');
+
+  // Tells the app how many fields of the open edit differ from the stored document, so closing can warn about them.
+  const editedDoc = editing ? documents[editing.index] : null;
+  const dirtyCount = editing && editedDoc ? editDirtyCount(editedDoc, editing.text) : 0;
+  useEffect(() => {
+    onDirtyChange?.(dirtyCount);
+  }, [dirtyCount]);
+  useEffect(() => () => onDirtyChange?.(0), []);
 
   const visible = documents.slice(0, limit);
   const toggle = index =>
@@ -112,7 +116,7 @@ export default function DocumentList({ documents, canEdit, onUpdate, onClone, on
                 }}
               >
                 <span className="shrink-0 [&>svg]:h-4 [&>svg]:w-4">{isOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>
-                <span className="w-6 shrink-0 text-right text-[10px] text-app-muted">{index + 1}</span>
+                <span className="w-6 shrink-0 text-right text-[11px] text-app-muted">{index + 1}</span>
                 <span className="shrink-0 font-mono text-xs font-semibold" title={idOf(doc)}>
                   {idOf(doc).length > 10 ? `…${idOf(doc).slice(-8)}` : idOf(doc) || '—'}
                 </span>
@@ -142,15 +146,13 @@ export default function DocumentList({ documents, canEdit, onUpdate, onClone, on
                 (isEditing ? (
                   <Stack gap={2} className="bg-app-bg p-3">
                     {editing.error && <Alert tone="danger">{editing.error}</Alert>}
-                    <div className="[&_textarea]:font-mono [&_textarea]:text-xs">
-                      <TextArea
-                        aria-label={`Edit document ${idOf(doc)}`}
-                        rows={Math.min(24, Math.max(6, editing.text.split(String.fromCharCode(10)).length + 1))}
-                        spellCheck={false}
-                        value={editing.text}
-                        onChange={text => setEditing(e => ({ ...e, text }))}
-                      />
-                    </div>
+                    <DocumentEditor
+                      key={idOf(doc) || index}
+                      text={editing.text}
+                      original={doc}
+                      idKey={doc._id !== undefined ? '_id' : 'id'}
+                      onChange={text => setEditing(e => ({ ...e, text, error: '' }))}
+                    />
                     <Flex gap={2} justify="end" className="compact-buttons">
                       <Button variant="flat" disabled={editing.saving} onClick={() => setEditing(null)}>
                         Cancel

@@ -5,6 +5,7 @@ import useConnections from './hooks/useConnections.js';
 import useObjectTree from './hooks/useObjectTree.js';
 import useQueryTabs from './hooks/useQueryTabs.js';
 import useRecordEditor from './hooks/useRecordEditor.js';
+import useGridEdits from './hooks/useGridEdits.js';
 import useConnectionDialog from './hooks/useConnectionDialog.js';
 import { selectStatement } from './lib/statements.js';
 import { assessCommand, assessStatement, splitStatements, statementAt } from './lib/sqlScript.js';
@@ -60,6 +61,30 @@ export default function App() {
   });
   const { tab } = tabsApi;
   const records = useRecordEditor({ active, tab, runQuery: tabsApi.runQuery, runMutation: tabsApi.runMutation, setQuery: tabsApi.setQuery, setStatus });
+  const gridEdits = useGridEdits({
+    active,
+    tab,
+    tabs: tabsApi.tabs,
+    selectedObject: tab.selectedObject,
+    enabled: Boolean(
+      isConnected && !active?.readOnly && languageFor(active) !== 'command' && tab.selectedObject?.type === 'table' && tab.browse && tab.query === tab.browse.generated
+    ),
+    runQuery: tabsApi.runQuery,
+    setStatus
+  });
+  // Lets the main process ask before the window closes while edits are unsaved.
+  const [documentDirty, setDocumentDirty] = useState(0);
+  const unsaved = gridEdits.totalPending + documentDirty + (records.editorDirty ? 1 : 0);
+  useEffect(() => {
+    window.workbench.reportUnsaved(unsaved);
+  }, [unsaved]);
+  // The main process asks here, in the themed UI, before the window closes with unsaved edits.
+  const [discardAsk, setDiscardAsk] = useState(0);
+  useEffect(() => window.workbench.onAskDiscard(count => setDiscardAsk(count || 1)), []);
+  const answerDiscard = ok => {
+    setDiscardAsk(0);
+    window.workbench.answerDiscard(ok);
+  };
   const dialog = useConnectionDialog({
     connected: conn.connected,
     saveProfile: conn.saveProfile,
@@ -98,7 +123,7 @@ export default function App() {
   async function connect() {
     const res = await conn.connect();
     if (res.ok) await tree.loadObjectTree(res.id, res.database);
-    else if (res.message) tabsApi.setError(res.message);
+    else if (res.message) tabsApi.setError(res.message, 'Connection failed');
   }
 
   async function disconnect() {
@@ -236,6 +261,21 @@ export default function App() {
         tabsApi.addTab();
         return;
       }
+      if (mod && key === 's' && !event.altKey && gridEdits.counts.total) {
+        event.preventDefault();
+        gridEdits.apply();
+        return;
+      }
+      if (mod && key === 'z' && !event.shiftKey && gridEdits.canUndo && !event.target.closest?.('input, textarea')) {
+        event.preventDefault();
+        gridEdits.undo();
+        return;
+      }
+      if (mod && key === 'w' && !event.altKey && active) {
+        event.preventDefault();
+        tabsApi.closeTab(tab.id);
+        return;
+      }
       if (mod && key === 'r' && !event.altKey) {
         event.preventDefault();
         refreshObjectsOrConnections();
@@ -298,6 +338,10 @@ export default function App() {
         <div className="flex min-h-0 flex-1">
           {isMd && <aside className="shrink-0">{sidebar(() => {}, false, !isLg)}</aside>}
           <main className="min-w-0 flex-1 overflow-y-auto">
+            <h1 className="sr-only">{active ? `UDBW, ${active.name}` : 'UDBW database workbench'}</h1>
+            <div className="sr-only" role="status" aria-live="polite">
+              {status}
+            </div>
             <Stack gap={0} className="min-h-full">
               <ConnectionToolbar
                 active={active}
@@ -337,6 +381,8 @@ export default function App() {
                 tab={tab}
                 status={status}
                 records={records}
+                gridEdits={gridEdits}
+                onDocumentDirty={setDocumentDirty}
                 isConnected={isConnected}
                 busy={busy}
                 readOnly={Boolean(active?.readOnly)}
@@ -359,8 +405,19 @@ export default function App() {
       </Drawer>
 
       <ConnectionDialog dialog={dialog} groups={[...new Set(conn.profiles.map(p => p.group?.trim() || 'Connections'))]} />
-      <RecordEditorDialog records={records} objectName={tab.selectedObject?.name} />
+      <RecordEditorDialog records={records} objectName={records.selectedObject?.name} documentMode={language === 'command'} />
       <RecordViewerDialog open={records.viewerOpen} onClose={() => records.setViewerOpen(false)} record={records.selectedJson} onCopy={copyText} />
+      <ConfirmDialog
+        open={discardAsk > 0}
+        tone="danger"
+        title="Unsaved changes"
+        confirmLabel="Discard and quit"
+        cancelLabel="Keep editing"
+        onClose={() => answerDiscard(false)}
+        onConfirm={() => answerDiscard(true)}
+      >
+        You have {discardAsk} unsaved change{discardAsk === 1 ? '' : 's'} . They have not been applied to the database, and quitting now discards them.
+      </ConfirmDialog>
       <ConfirmDialog
         open={records.bulkOpen}
         tone="danger"

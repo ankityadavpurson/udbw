@@ -39,7 +39,7 @@ function subTable(nested) {
   return { columns: ['key', 'value'], rows: entries.map(([key, value]) => ({ __k: key, key, value })) };
 }
 
-const compact = 'text-xs [&_td]:!px-2 [&_td]:!py-1 [&_th]:!px-2 [&_th]:!py-1 [&_th]:!text-[10px]';
+const compact = 'text-xs [&_td]:!px-2 [&_td]:!py-1 [&_th]:!px-2 [&_th]:!py-1 [&_th]:!text-[11px]';
 
 // A cell value. Primitives are plain text; objects and arrays become a small table that can be folded.
 export default function NestedValue({ value, depth = 0 }) {

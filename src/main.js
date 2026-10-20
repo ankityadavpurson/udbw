@@ -37,6 +37,11 @@ app.whenReady().then(() => {
 let quitting = false;
 app.on('before-quit', event => {
   if (quitting) return;
+  if (windowState.hasUnsavedChanges()) {
+    event.preventDefault();
+    windowState.confirmDiscard().then(ok => ok && app.quit());
+    return;
+  }
   quitting = true;
   event.preventDefault();
   Promise.race([sessions.closeAll(), new Promise(resolve => setTimeout(resolve, 3000))]).finally(() => app.quit());

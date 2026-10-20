@@ -88,4 +88,40 @@ function mutationResult(action, count) {
   return { columns: [], rows: [], rowCount: count, message: `${verb} ${count ?? 0} row(s)` };
 }
 
-module.exports = { serializeValue, normalizeSqlResult, normalizePgResult, buildSqlMutation, mutationResult };
+const MAX_BATCH = 1000;
+
+// Applies several structured changes as one transaction: all of them, or none. `driver` supplies the dialect and the
+// transaction primitives; an update or delete that does not touch exactly one row aborts the whole batch.
+async function applyBatch(ops, { dialect, begin, run, commit, rollback }) {
+  if (!Array.isArray(ops) || !ops.length) throw new Error('There are no changes to apply.');
+  if (ops.length > MAX_BATCH) throw new Error(`At most ${MAX_BATCH} changes can be applied at once.`);
+  const statements = ops.map((op, i) => {
+    try {
+      return { op, ...buildSqlMutation(dialect, op) };
+    } catch (err) {
+      throw new Error(`Change ${i + 1}: ${err.message}`);
+    }
+  });
+  const counts = { insert: 0, update: 0, delete: 0 };
+  await begin();
+  try {
+    for (const [i, { op, sql, params }] of statements.entries()) {
+      const affected = await run(sql, params);
+      if (op.action !== 'insert' && affected !== 1)
+        throw new Error(`Change ${i + 1} (${op.action}) affected ${affected} rows instead of 1. The row may have changed or been removed. Nothing was saved.`);
+      counts[op.action] += 1;
+    }
+    await commit();
+  } catch (err) {
+    await rollback().catch(() => {});
+    throw err;
+  }
+  const parts = [
+    ['Inserted', counts.insert],
+    ['Updated', counts.update],
+    ['Deleted', counts.delete]
+  ].filter(([, n]) => n);
+  return { columns: [], rows: [], rowCount: ops.length, message: `${parts.map(([verb, n]) => `${verb} ${n}`).join(', ')} row(s) in one transaction` };
+}
+
+module.exports = { applyBatch, serializeValue, normalizeSqlResult, normalizePgResult, buildSqlMutation, mutationResult };

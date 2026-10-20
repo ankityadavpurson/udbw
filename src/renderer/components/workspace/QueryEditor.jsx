@@ -205,6 +205,12 @@ const QueryEditor = forwardRef(function QueryEditor({ value, onChange, onRun, on
         <textarea
           ref={textareaRef}
           aria-label="Query editor"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-haspopup="listbox"
+          aria-expanded={Boolean(popup)}
+          aria-controls={popup ? 'query-suggestions' : undefined}
+          aria-activedescendant={popup ? `query-suggestion-${popup.index}` : undefined}
           spellCheck={false}
           value={value}
           onScroll={syncScroll}
@@ -223,6 +229,7 @@ const QueryEditor = forwardRef(function QueryEditor({ value, onChange, onRun, on
       </div>
       {popup && (
         <ul
+          id="query-suggestions"
           role="listbox"
           aria-label="Suggestions"
           className="absolute z-30 max-h-48 min-w-[11rem] max-w-xs overflow-auto rounded border border-app-border bg-app-card py-1 text-xs shadow-lg"
@@ -231,6 +238,7 @@ const QueryEditor = forwardRef(function QueryEditor({ value, onChange, onRun, on
           {popup.items.map((item, i) => (
             <li
               key={`${item.kind}:${item.label}`}
+              id={`query-suggestion-${i}`}
               role="option"
               aria-selected={i === popup.index}
               onMouseDown={e => {
@@ -239,9 +247,9 @@ const QueryEditor = forwardRef(function QueryEditor({ value, onChange, onRun, on
               }}
               className={`flex cursor-pointer items-center gap-2 px-2 py-1 ${i === popup.index ? 'bg-app-soft/40' : ''}`}
             >
-              <span className="w-3 shrink-0 text-center text-[9px] font-bold text-app-muted">{KIND_BADGE[item.kind]}</span>
+              <span className="w-3 shrink-0 text-center text-[11px] font-bold text-app-muted">{KIND_BADGE[item.kind]}</span>
               <span className="truncate font-mono">{item.label}</span>
-              {item.detail ? <span className="ml-auto truncate pl-3 text-[10px] text-app-muted">{item.detail}</span> : null}
+              {item.detail ? <span className="ml-auto truncate pl-3 text-[11px] text-app-muted">{item.detail}</span> : null}
             </li>
           ))}
         </ul>

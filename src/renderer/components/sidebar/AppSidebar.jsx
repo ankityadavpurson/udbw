@@ -40,7 +40,7 @@ export default function AppSidebar({ close, inDrawer, autoCollapsed, profiles, a
         key: p.id,
         label: `${p.favorite ? '★ ' : ''}${p.name}`,
         icon: (
-          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold">
             <StatusDot state={connectionStatus(p.id)} />
             {engines[p.type].icon}
           </span>

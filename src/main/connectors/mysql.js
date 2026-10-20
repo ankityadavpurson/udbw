@@ -1,4 +1,4 @@
-const { normalizeSqlResult, buildSqlMutation, mutationResult } = require('./sql');
+const { normalizeSqlResult, buildSqlMutation, mutationResult, applyBatch } = require('./sql');
 const { capSql, sqlIsWrite } = require('../sqlText');
 const { logger } = require('../logger');
 
@@ -71,6 +71,17 @@ async function mutate(session, op) {
   const { sql, params } = buildSqlMutation('mysql', op);
   const [res] = await session.client.query(sql, params);
   return mutationResult(op.action, res.affectedRows);
+}
+
+async function mutateBatch(session, ops) {
+  const client = session.client;
+  return applyBatch(ops, {
+    dialect: 'mysql',
+    begin: () => client.query('START TRANSACTION'),
+    run: async (sql, params) => (await client.query(sql, params))[0].affectedRows,
+    commit: () => client.query('COMMIT'),
+    rollback: () => client.query('ROLLBACK')
+  });
 }
 
 async function switchDatabase(session, database) {
@@ -160,4 +171,4 @@ async function describe(session, object) {
   };
 }
 
-module.exports = { routineSignatures, connect, close, query, cancel, mutate, switchDatabase, discover, describe, isWrite };
+module.exports = { routineSignatures, connect, close, query, cancel, mutate, mutateBatch, switchDatabase, discover, describe, isWrite };

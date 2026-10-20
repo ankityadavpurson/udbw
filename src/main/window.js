@@ -1,11 +1,11 @@
-const { app, BrowserWindow, Menu, screen, shell, dialog, session } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, screen, shell, dialog, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { logger, logFile } = require('./logger');
 
 // Custom title bar: the native one is hidden and Electron draws only the window buttons, in these colours.
 // The overlay is one pixel shorter than the bar so the bar's bottom border shows under the window buttons.
-const TITLE_BAR = { height: 30, dark: { color: '#1f1f1f', symbolColor: '#ffffff' }, light: { color: '#ffffff', symbolColor: '#151515' } };
+const TITLE_BAR = { height: 30, dark: { color: '#141414', symbolColor: '#ffffff' }, light: { color: '#ffffff', symbolColor: '#0d0d0d' } };
 const SPLASH_MIN_MS = 700; // avoid a flash when the UI is ready almost immediately
 const SPLASH_MAX_MS = 15000; // never leave the splash up if the UI fails to report
 
@@ -67,6 +67,60 @@ function trackWindowState(win) {
   });
 }
 
+// Unsaved table edits reported by the UI. Closing or quitting with some asks first.
+let unsavedChanges = 0;
+let discardConfirmed = false;
+const setUnsavedChanges = count => {
+  unsavedChanges = Math.max(0, Number(count) || 0);
+  if (!unsavedChanges) discardConfirmed = false;
+};
+const hasUnsavedChanges = () => unsavedChanges > 0 && !discardConfirmed;
+
+// Resolves true when the user agrees to lose the pending changes. The question is asked in the app's own (themed)
+// dialog; the native message box is only the fallback when the page cannot show it.
+let asking = null;
+function confirmDiscard() {
+  if (asking) return asking;
+  const win = getMainWindow();
+  const page = win?.webContents;
+  const ask = page && !page.isDestroyed() && !page.isCrashed() && !page.isLoading() ? askInPage(page) : askNatively(win);
+  asking = ask
+    .then(ok => {
+      if (ok) discardConfirmed = true;
+      return ok;
+    })
+    .finally(() => {
+      asking = null;
+    });
+  return asking;
+}
+
+function askInPage(page) {
+  return new Promise(resolve => {
+    const onAnswer = (event, ok) => {
+      if (event.sender !== page) return;
+      ipcMain.removeListener('unsaved:answer', onAnswer);
+      resolve(ok === true);
+    };
+    ipcMain.on('unsaved:answer', onAnswer);
+    page.once('destroyed', () => resolve(false));
+    page.send('unsaved:ask', unsavedChanges);
+  });
+}
+
+async function askNatively(win) {
+  const { response } = await dialog.showMessageBox(win || undefined, {
+    type: 'warning',
+    buttons: ['Keep editing', 'Discard and quit'],
+    defaultId: 0,
+    cancelId: 0,
+    title: 'Unsaved changes',
+    message: `You have ${unsavedChanges} unsaved change${unsavedChanges === 1 ? '' : 's'} .`,
+    detail: 'They have not been applied to the database. Quitting now discards them.'
+  });
+  return response === 1;
+}
+
 const getMainWindow = () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
 
 function createSplash() {
@@ -80,7 +134,7 @@ function createSplash() {
     show: false,
     alwaysOnTop: true,
     skipTaskbar: true,
-    backgroundColor: '#252529',
+    backgroundColor: '#0d0d0d',
     title: 'UDBW',
     icon: path.join(root, 'build', 'icon.png'),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
@@ -130,7 +184,7 @@ function createWindow() {
     ...restored.bounds,
     minWidth: 1000,
     minHeight: 680,
-    backgroundColor: '#101116',
+    backgroundColor: '#0d0d0d',
     title: 'UDBW',
     icon: path.join(root, 'build', 'icon.png'),
     webPreferences: {
@@ -144,6 +198,13 @@ function createWindow() {
   });
   restoredMaximized = Boolean(restored.maximized);
   trackWindowState(mainWindow);
+  mainWindow.on('close', event => {
+    if (!hasUnsavedChanges()) return;
+    event.preventDefault();
+    confirmDiscard().then(ok => {
+      if (ok) getMainWindow()?.close();
+    });
+  });
   mainWindow.once('ready-to-show', () => {
     if (!splash) showMainWindow();
   }); // e.g. reopened from the dock
@@ -256,4 +317,4 @@ function applyTheme(theme) {
   }
 }
 
-module.exports = { createSplash, createWindow, revealMainWindow, hardenWebContents, buildAppMenu, applyTheme, getMainWindow };
+module.exports = { createSplash, createWindow, revealMainWindow, hardenWebContents, buildAppMenu, applyTheme, getMainWindow, setUnsavedChanges, hasUnsavedChanges, confirmDiscard };

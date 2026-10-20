@@ -14,6 +14,14 @@ export default function ResizableHeader({ label, onResize }) {
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', stop);
   }
+  function onKeyDown(event) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const cell = event.currentTarget.closest('th');
+    const width = cell ? cell.getBoundingClientRect().width : 160;
+    onResize(Math.max(64, Math.round(width + (event.key === 'ArrowRight' ? 16 : -16))));
+  }
   return (
     <span className="relative block min-w-0 pr-2">
       <span className="block truncate">{label}</span>
@@ -21,10 +29,13 @@ export default function ResizableHeader({ label, onResize }) {
         role="separator"
         aria-orientation="vertical"
         aria-label={`Resize column ${label}`}
-        title="Drag to resize"
+        tabIndex={0}
+        onKeyDown={onKeyDown}
+        onKeyUp={e => e.stopPropagation()}
+        title="Drag, or use the left and right arrow keys, to resize"
         onPointerDown={startDrag}
         onClick={e => e.stopPropagation()}
-        className="absolute -right-2 -top-1 h-[calc(100%+0.5rem)] w-2 cursor-col-resize select-none hover:bg-app-soft/60"
+        className="absolute -right-2 -top-1 h-[calc(100%+0.5rem)] w-2 cursor-col-resize select-none hover:bg-app-soft/60 focus-visible:bg-app-soft/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-strong"
       />
     </span>
   );

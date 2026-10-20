@@ -7,8 +7,10 @@ contextBridge.exposeInMainWorld('workbench', {
   discover: payload => ipcRenderer.invoke('db:discover', payload),
   switchDatabase: payload => ipcRenderer.invoke('db:switch-database', payload),
   connect: payload => ipcRenderer.invoke('db:connect', payload),
+  revealSecret: payload => ipcRenderer.invoke('connections:reveal-secret', payload),
   disconnect: payload => ipcRenderer.invoke('db:disconnect', payload),
   query: payload => ipcRenderer.invoke('db:query', payload),
+  mutateBatch: payload => ipcRenderer.invoke('db:mutate-batch', payload),
   mutate: payload => ipcRenderer.invoke('db:mutate', payload),
   cancel: payload => ipcRenderer.invoke('db:cancel', payload),
   describe: payload => ipcRenderer.invoke('db:describe', payload),
@@ -17,6 +19,13 @@ contextBridge.exposeInMainWorld('workbench', {
   pickSshKey: () => ipcRenderer.invoke('db:pick-ssh-key'),
   logError: entry => ipcRenderer.send('log:renderer', entry),
   appReady: () => ipcRenderer.send('app:ready'),
+  onAskDiscard: callback => {
+    const handler = (_event, count) => callback(count);
+    ipcRenderer.on('unsaved:ask', handler);
+    return () => ipcRenderer.removeListener('unsaved:ask', handler);
+  },
+  answerDiscard: ok => ipcRenderer.send('unsaved:answer', ok === true),
+  reportUnsaved: count => ipcRenderer.send('unsaved:report', count),
   reportTheme: theme => ipcRenderer.send('theme:report', theme),
   onSetTheme: callback => {
     const handler = (_event, mode) => callback(mode);
