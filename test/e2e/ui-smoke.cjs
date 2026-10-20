@@ -257,6 +257,7 @@ app.whenReady().then(async () => {
     await run(
       `window.workbench.saveConnections(${JSON.stringify({ profiles: [{ ...profile, password: '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' }, mongo], activeId: 'p2', lastQueries: {} })})`
     );
+    await sleep(1200); // let the debounced save of the restored tabs finish, or the page asks before it unloads
     win.webContents.reload();
     await sleep(2500);
     await run(helpers);
