@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, ChevronDownIcon, ChevronRightIcon, CodeDisplay, ConfirmDialog, CopyIcon, EditIcon, Flex, HelperText, PlusIcon, Stack, Trash2Icon } from 'xedonium';
+import { Alert, Button, ChevronDownIcon, ChevronRightIcon, CodeDisplay, ConfirmDialog, CopyIcon, EditIcon, Flex, HelperText, PlusIcon, Stack, Tooltip, Trash2Icon } from 'xedonium';
 import { summarizeDocument } from '../../lib/results.js';
 import DocumentEditor from './DocumentEditor.jsx';
 import { diffDocs } from '../../lib/docTree.js';
@@ -72,11 +72,12 @@ export default function DocumentList({ documents, canEdit, onUpdate, onClone, on
           {documents.length} document{documents.length === 1 ? '' : 's'}
         </HelperText>
         <Flex gap={2} wrap className="compact-buttons">
-          <Button variant="flat" onClick={() => setOpen(new Set(visible.map((_, i) => i)))}>
+          <Button variant="flat" tooltip="Open every document on this page" onClick={() => setOpen(new Set(visible.map((_, i) => i)))}>
             Expand all
           </Button>
           <Button
             variant="flat"
+            tooltip="Fold every document"
             onClick={() => {
               setOpen(new Set());
               setEditing(null);
@@ -84,7 +85,7 @@ export default function DocumentList({ documents, canEdit, onUpdate, onClone, on
           >
             Collapse all
           </Button>
-          <Button variant="secondary" disabled={!canEdit} onClick={onInsert}>
+          <Button variant="secondary" tooltip="Insert a new document" disabled={!canEdit} onClick={onInsert}>
             <PlusIcon /> Add document
           </Button>
         </Flex>
@@ -117,9 +118,9 @@ export default function DocumentList({ documents, canEdit, onUpdate, onClone, on
               >
                 <span className="shrink-0 [&>svg]:h-4 [&>svg]:w-4">{isOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>
                 <span className="w-6 shrink-0 text-right text-[11px] text-app-muted">{index + 1}</span>
-                <span className="shrink-0 font-mono text-xs font-semibold" title={idOf(doc)}>
-                  {idOf(doc).length > 10 ? `…${idOf(doc).slice(-8)}` : idOf(doc) || '—'}
-                </span>
+                <Tooltip text={idOf(doc).length > 10 ? idOf(doc) : ''} placement="top">
+                  <span className="shrink-0 font-mono text-xs font-semibold">{idOf(doc).length > 10 ? `…${idOf(doc).slice(-8)}` : idOf(doc) || '—'}</span>
+                </Tooltip>
                 <span className="min-w-0 flex-1 truncate text-xs text-app-muted">
                   {summarizeDocument(doc).map(([key, value], i) => (
                     <span key={key}>

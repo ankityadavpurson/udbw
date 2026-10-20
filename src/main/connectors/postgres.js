@@ -141,8 +141,10 @@ async function describe(session, object) {
   const client = await meta(session);
   const schema = object.schema || 'public';
   const columns = await client.query(
-    `SELECT a.attname AS name, pg_catalog.format_type(a.atttypid, a.atttypmod) AS type, NOT a.attnotnull AS nullable
+    `SELECT a.attname AS name, pg_catalog.format_type(a.atttypid, a.atttypmod) AS type, NOT a.attnotnull AS nullable,
+       pg_catalog.pg_get_expr(d.adbin, d.adrelid) AS default_value, a.attidentity <> '' AS identity
      FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+     LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
      WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`,
     [schema, object.name]
   );
@@ -158,7 +160,13 @@ async function describe(session, object) {
   ]);
   return {
     columns: columns.rows.map(c => c.name),
-    columnInfo: columns.rows.map(c => ({ name: c.name, type: c.type, nullable: c.nullable })),
+    columnInfo: columns.rows.map(c => ({
+      name: c.name,
+      type: c.type,
+      nullable: c.nullable,
+      defaultValue: c.default_value ?? null,
+      auto: Boolean(c.identity) || /^nextval\(/i.test(c.default_value || '')
+    })),
     primaryKey: keys.rows.map(k => k.name),
     indexes: indexes.rows.map(i => ({ name: i.name, definition: i.definition }))
   };

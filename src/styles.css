@@ -49,7 +49,7 @@ input,
 textarea,
 pre,
 code,
-td,
+.compact-grid td,
 [role='alert'],
 .select-text {
   -webkit-user-select: text;

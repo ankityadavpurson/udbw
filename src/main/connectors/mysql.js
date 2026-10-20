@@ -143,7 +143,7 @@ async function describe(session, object) {
   const client = await meta(session);
   const schema = object.schema || session.database || session.profile.database;
   const [columns] = await client.query(
-    'SELECT COLUMN_NAME AS name, COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.columns WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION',
+    'SELECT COLUMN_NAME AS name, COLUMN_TYPE AS type, IS_NULLABLE AS nullable, COLUMN_DEFAULT AS defaultValue, EXTRA AS extra FROM information_schema.columns WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION',
     [schema, object.name]
   );
   const [keys] = await client.query(
@@ -165,7 +165,14 @@ async function describe(session, object) {
   }
   return {
     columns: columns.map(c => c.name),
-    columnInfo: columns.map(c => ({ name: c.name, type: c.type, nullable: c.nullable === 'YES' })),
+    columnInfo: columns.map(c => ({
+      name: c.name,
+      type: c.type,
+      nullable: c.nullable === 'YES',
+      defaultValue: c.defaultValue ?? null,
+      auto: /auto_increment/i.test(c.extra || ''),
+      generated: /generated/i.test(c.extra || '')
+    })),
     primaryKey: keys.map(k => k.name),
     indexes
   };

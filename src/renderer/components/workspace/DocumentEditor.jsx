@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, ChevronDownIcon, ChevronRightIcon, Flex, LockIcon, PlusIcon, TextArea, ToggleButton, ToggleButtonGroup, XIcon } from 'xedonium';
+import { Alert, ChevronDownIcon, ChevronRightIcon, Flex, LockIcon, PlusIcon, TextArea, ToggleButton, ToggleButtonGroup, Tooltip, XIcon } from 'xedonium';
 import { addField, convertType, diffDocs, freshKey, getAt, removeAt, renameKey, setAt, specialOf, TYPES, typeOf } from '../../lib/docTree.js';
 
 const field =
@@ -87,18 +87,28 @@ function TreeNode({ name, path, value, original, depth, locked, inArray, ops }) 
       >
         <span className="flex h-6 w-4 shrink-0 items-center">
           {container ? (
-            <button type="button" aria-expanded={open} aria-label={`${open ? 'Collapse' : 'Expand'} ${label}`} onClick={() => ops.toggle(path)} className="[&>svg]:h-4 [&>svg]:w-4">
-              {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
-            </button>
+            <Tooltip text={open ? 'Collapse' : 'Expand'} placement="top">
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-label={`${open ? 'Collapse' : 'Expand'} ${label}`}
+                onClick={() => ops.toggle(path)}
+                className="[&>svg]:h-4 [&>svg]:w-4"
+              >
+                {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
+              </button>
+            </Tooltip>
           ) : null}
         </span>
         <span className="flex h-6 w-40 shrink-0 items-center gap-1">
           {inArray ? (
             <span className="font-mono text-xs text-app-muted">[{name}]</span>
           ) : locked ? (
-            <span className="inline-flex items-center gap-1 font-mono text-xs font-semibold text-[#c29eff]" title="The identifier cannot be changed">
-              {name} <LockIcon className="h-3 w-3 text-app-muted" />
-            </span>
+            <Tooltip text="The identifier cannot be changed" placement="top">
+              <span className="inline-flex items-center gap-1 font-mono text-xs font-semibold text-[#c29eff]">
+                {name} <LockIcon className="h-3 w-3 text-app-muted" />
+              </span>
+            </Tooltip>
           ) : (
             <KeyInput value={name} label={`Field name ${label}`} autoFocus={ops.justAdded === keyOf(path)} onCommit={next => ops.rename(path, next)} />
           )}
@@ -149,15 +159,16 @@ function TreeNode({ name, path, value, original, depth, locked, inArray, ops }) 
           )}
         </div>
         {!locked && (
-          <button
-            type="button"
-            aria-label={`Remove ${label}`}
-            title="Remove"
-            onClick={() => ops.remove(path)}
-            className="flex h-6 w-6 shrink-0 items-center justify-center text-app-muted hover:text-[#f0989e] [&>svg]:h-3.5 [&>svg]:w-3.5"
-          >
-            <XIcon />
-          </button>
+          <Tooltip text="Remove" placement="top">
+            <button
+              type="button"
+              aria-label={`Remove ${label}`}
+              onClick={() => ops.remove(path)}
+              className="flex h-6 w-6 shrink-0 items-center justify-center text-app-muted hover:text-[#f0989e] [&>svg]:h-3.5 [&>svg]:w-3.5"
+            >
+              <XIcon />
+            </button>
+          </Tooltip>
         )}
       </div>
       {container && open && (

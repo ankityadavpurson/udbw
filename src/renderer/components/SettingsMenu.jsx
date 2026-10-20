@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Menu, SettingsIcon } from 'xedonium';
+import Tip from './Tip.jsx';
 import { useTheme } from 'xedonium/theme';
 
 // App settings in a small menu (the native menu bar is hidden until Alt is pressed): the colour theme and updates.
@@ -23,17 +24,19 @@ export default function SettingsMenu({ placement = 'bottom-start' }) {
     { key: 'version', label: version ? `Version ${version}` : 'Version', disabled: true }
   ];
   return (
-    <Menu
-      label="Settings"
-      variant="flat"
-      placement={placement}
-      trigger={
-        <>
-          <SettingsIcon />
-          <span className="sr-only">Settings</span>
-        </>
-      }
-      items={items}
-    />
+    <Tip text="Settings: theme and updates" side={placement.startsWith('right') ? 'right' : 'bottom'} align="start">
+      <Menu
+        label="Settings"
+        variant="flat"
+        placement={placement}
+        trigger={
+          <>
+            <SettingsIcon />
+            <span className="sr-only">Settings</span>
+          </>
+        }
+        items={items}
+      />
+    </Tip>
   );
 }

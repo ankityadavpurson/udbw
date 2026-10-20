@@ -258,6 +258,11 @@ export default function App() {
     const onShortcut = event => {
       const key = event.key.toLowerCase();
       const mod = event.ctrlKey || event.metaKey;
+      // Select all only makes sense inside a field or a code block, not across the whole window.
+      if (mod && key === 'a' && !event.target.closest?.('input, textarea, pre, code, [contenteditable="true"], .select-text, .compact-grid')) {
+        event.preventDefault();
+        return;
+      }
       if (mod && key === 't' && !event.altKey) {
         event.preventDefault();
         tabsApi.addTab();
@@ -319,6 +324,7 @@ export default function App() {
       activeId={activeId}
       connectionStatus={conn.connectionStatus}
       onChoose={chooseConnection}
+      onConnect={() => !isConnected && !busy && connect()}
       onNew={() => dialog.openDialog()}
       onRefresh={conn.refreshConnections}
     >

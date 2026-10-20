@@ -18,13 +18,19 @@ export function exportFileName(tab, extension) {
   return `${base}_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.${extension}`;
 }
 
+const csvLines = (columns, rows) => [columns, ...rows].map(row => row.map(value => `"${text(value).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+
 function toCsv(result) {
   const { columns, rows } = toTable(result);
-  const lines = [columns, ...rows].map(row => row.map(value => `"${text(value).replace(/"/g, '""')}"`).join(','));
   // The byte-order mark makes Excel read the file as UTF-8 instead of guessing a legacy code page.
-  return `\uFEFF${lines.join('\r\n')}`;
+  return `\uFEFF${csvLines(columns, rows)}`;
 }
 
+// CSV (with the header line) of some rows of a result, for the clipboard. `indexes` are positions in the result.
+export function rowsToCsv(result, indexes) {
+  const { columns, rows } = toTable(result);
+  return csvLines(columns, indexes.map(index => rows[index]).filter(Boolean));
+}
 function toSqlInserts(result, tab, active) {
   const quote = active?.type === 'mysql' ? name => `\`${String(name).replace(/`/g, '``')}\`` : name => `"${String(name).replace(/"/g, '""')}"`;
   const object = tab?.selectedObject;

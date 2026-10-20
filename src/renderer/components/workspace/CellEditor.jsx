@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { Tooltip } from 'xedonium';
 
 // Inline editor of one grid cell. Enter or leaving the cell keeps the value, Esc drops it. NULL is its own value,
 // distinct from an empty string.
@@ -41,18 +42,19 @@ export default function CellEditor({ value, label, onCommit, onCancel }) {
         onBlur={() => finish(current())}
         className="h-6 min-w-0 flex-1 rounded-none border border-app-strong bg-app-bg px-1.5 font-mono text-xs text-app-text outline-none placeholder:italic placeholder:text-app-muted"
       />
-      <button
-        type="button"
-        title="Set to NULL"
-        aria-label="Set to NULL"
-        onMouseDown={e => {
-          e.preventDefault();
-          finish(null);
-        }}
-        className="h-6 shrink-0 border border-app-border px-1.5 text-[11px] text-app-muted hover:text-app-text"
-      >
-        NULL
-      </button>
+      <Tooltip text="Set to NULL" placement="top">
+        <button
+          type="button"
+          aria-label="Set to NULL"
+          onMouseDown={e => {
+            e.preventDefault();
+            finish(null);
+          }}
+          className="h-6 shrink-0 border border-app-border px-1.5 text-[11px] text-app-muted hover:text-app-text"
+        >
+          NULL
+        </button>
+      </Tooltip>
     </div>
   );
 }

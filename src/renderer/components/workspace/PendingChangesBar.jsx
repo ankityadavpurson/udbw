@@ -15,13 +15,13 @@ export default function PendingChangesBar({ edits, dialect = 'postgres', onCopy 
           {counts.total} pending change{counts.total === 1 ? '' : 's'}
         </span>
         <span className="min-w-0 flex-1 truncate text-xs text-app-muted">{summary}</span>
-        <Button variant="flat" onClick={() => setShowSql(true)} aria-haspopup="dialog">
+        <Button variant="flat" tooltip="Show the statements that will run" onClick={() => setShowSql(true)} aria-haspopup="dialog">
           Preview SQL
         </Button>
         <Button variant="flat" disabled={!canUndo || applying} onClick={undo} tooltip="Undo the last change (Ctrl+Z)">
           Undo
         </Button>
-        <Button variant="secondary" disabled={applying} onClick={discard}>
+        <Button variant="secondary" tooltip="Throw away all pending changes" disabled={applying} onClick={discard}>
           Discard
         </Button>
         <Button disabled={applying || !counts.total} onClick={apply} tooltip="Saves everything in one transaction (Ctrl+S)">

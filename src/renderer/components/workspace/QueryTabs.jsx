@@ -1,4 +1,4 @@
-import { Button, CloseIcon, Flex, PlusIcon, Tabs } from 'xedonium';
+import { Button, CloseIcon, Flex, PlusIcon, Tabs, Tooltip } from 'xedonium';
 
 export default function QueryTabs({ tabs, activeTabId, canAdd, onSelect, onClose, onAdd }) {
   if (!tabs.length) return null;
@@ -6,19 +6,23 @@ export default function QueryTabs({ tabs, activeTabId, canAdd, onSelect, onClose
     key: t.id,
     label: (
       <span className="inline-flex max-w-[12rem] items-center gap-2">
-        <span className="truncate">{t.title}</span>
-        <span
-          role="button"
-          tabIndex={-1}
-          aria-label={`Close ${t.title}`}
-          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-none opacity-75 hover:bg-app-border hover:opacity-100 [&>svg]:h-3 [&>svg]:w-3"
-          onClick={e => {
-            e.stopPropagation();
-            onClose(t.id);
-          }}
-        >
-          <CloseIcon />
-        </span>
+        <Tooltip text={t.title} onlyIfTruncated className="min-w-0">
+          <span className="block truncate">{t.title}</span>
+        </Tooltip>
+        <Tooltip text="Close tab (Ctrl+W)" placement="bottom">
+          <span
+            role="button"
+            tabIndex={-1}
+            aria-label={`Close ${t.title}`}
+            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-none opacity-75 hover:bg-app-border hover:opacity-100 [&>svg]:h-3 [&>svg]:w-3"
+            onClick={e => {
+              e.stopPropagation();
+              onClose(t.id);
+            }}
+          >
+            <CloseIcon />
+          </span>
+        </Tooltip>
       </span>
     )
   }));
