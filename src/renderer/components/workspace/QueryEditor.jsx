@@ -186,7 +186,7 @@ const QueryEditor = forwardRef(function QueryEditor({ value, onChange, onRun, on
         <pre
           ref={gutterRef}
           aria-hidden="true"
-          className="absolute inset-y-0 left-0 m-0 w-10 select-none overflow-hidden border-r border-app-border py-2 pr-2 text-right font-mono text-xs leading-5 text-app-muted"
+          className="pointer-events-none absolute inset-y-0 left-0 z-10 m-0 w-10 select-none overflow-hidden border-r border-app-border bg-app-card py-2 pr-2 text-right font-mono text-xs leading-5 text-app-muted"
         >
           {Array.from({ length: lineCount }, (_, i) => i + 1).join('\n')}
         </pre>

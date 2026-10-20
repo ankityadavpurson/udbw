@@ -36,7 +36,7 @@ export default function UpdateDialog() {
     >
       <div className="space-y-2 p-5">
         <p className="text-sm font-semibold">{notice.message}</p>
-        {notice.detail && <p className="whitespace-pre-wrap break-words text-sm text-app-muted">{notice.detail}</p>}
+        {notice.detail && <p className="select-text whitespace-pre-wrap break-words text-sm text-app-muted">{notice.detail}</p>}
       </div>
     </Modal>
   );

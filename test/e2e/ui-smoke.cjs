@@ -166,6 +166,17 @@ app.whenReady().then(async () => {
     check('and browses page 1 with one extra row', lastQuery()?.text === 'SELECT * FROM `shop`.`users` LIMIT 101 OFFSET 0;', lastQuery()?.text);
     const page = await text();
     check('the page shows 100 rows and a page indicator', /Page 1/.test(page) && /user 100/.test(page) && !/user 101\b/.test(page));
+    // Text is not selectable like a web page, except where people copy from.
+    const selectable = await run(`(() => {
+      const us = el => (el ? getComputedStyle(el).userSelect : 'missing');
+      return { body: us(document.body), editor: us(document.querySelector('textarea[aria-label="Query editor"]')), cell: us(document.querySelector('td')), heading: us(document.querySelector('h1, h2')) };
+    })()`);
+    check(
+      'page text is not selectable, but fields and result cells are',
+      selectable.body === 'none' && selectable.editor === 'text' && selectable.cell === 'text',
+      JSON.stringify(selectable)
+    );
+
     // Inline editing: change a cell, see it pending, then apply it as one transaction.
     await run(`void (() => {
       const cell = [...document.querySelectorAll('td div[title*="F2"]')].find(el => el.textContent.trim() === 'user 2');
