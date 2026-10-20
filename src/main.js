@@ -1,9 +1,18 @@
 const { app, BrowserWindow } = require('electron');
+const path = require('path');
 const windowState = require('./main/window');
 const { registerIpc } = require('./main/ipc');
 const sessions = require('./main/sessions');
 const { installCrashHandlers, logger } = require('./main/logger');
 const { checkForUpdates } = require('./main/updater');
+
+// A run from source (`yarn dev` / `yarn start`) keeps its data in its own folder. Otherwise it would share the saved
+// connections and the single-instance lock with an installed copy, which would just be brought forward instead of starting.
+// (Windows folder names are not case sensitive, so "udbw" and the installed "UDBW" are the same folder.)
+if (!app.isPackaged) {
+  const standard = path.resolve(app.getPath('appData'), app.getName());
+  if (path.resolve(app.getPath('userData')).toLowerCase() === standard.toLowerCase()) app.setPath('userData', `${standard}-dev`);
+}
 
 installCrashHandlers();
 

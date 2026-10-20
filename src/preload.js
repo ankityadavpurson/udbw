@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('workbench', {
+  isDev: process.argv.includes('--udbw-dev'),
   loadConnections: () => ipcRenderer.invoke('connections:load'),
   saveConnections: profiles => ipcRenderer.invoke('connections:save', profiles),
   test: payload => ipcRenderer.invoke('db:test', payload),

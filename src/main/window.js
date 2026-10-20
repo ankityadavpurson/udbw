@@ -189,6 +189,7 @@ function createWindow() {
     icon: path.join(root, 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(root, 'src', 'preload.js'),
+      additionalArguments: app.isPackaged ? [] : ['--udbw-dev'], // lets the page mark a run from source
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
