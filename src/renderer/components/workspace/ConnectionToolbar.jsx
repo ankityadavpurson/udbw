@@ -1,4 +1,4 @@
-import { Button, Chip, CodeIcon, Flex, HelperText, Loader, LockIcon, Menu, MenuIcon, MoreVerticalIcon, PlayIcon, PowerIcon, XIcon } from 'xedonium';
+import { Button, Chip, CodeIcon, Flex, InfoIcon, Loader, LockIcon, Menu, MenuIcon, MoreVerticalIcon, PlayIcon, Popover, PowerIcon, XIcon } from 'xedonium';
 import StatusDot from '../StatusDot.jsx';
 
 const ENV_TONE = { production: 'danger', staging: 'warning', development: 'success' };
@@ -22,7 +22,7 @@ export default function ConnectionToolbar({
   menuItems
 }) {
   return (
-    <Flex gap={2} align="center" justify="between" wrap className="px-2 py-1.5">
+    <Flex gap={2} align="center" justify="between" className="px-2 py-1.5">
       <Flex gap={2} align="center" className="min-w-0">
         {showMenuButton && (
           <Button variant="secondary" aria-label="Open menu" onClick={onOpenMenu}>
@@ -42,9 +42,13 @@ export default function ConnectionToolbar({
             read-only
           </Chip>
         )}
-        <HelperText className="truncate">{engine?.help || 'Select or create a connection to begin'}</HelperText>
+        <span className="compact-buttons compact-icons shrink-0">
+          <Popover label="About this connection" variant="flat" trigger={<InfoIcon />}>
+            <p className="max-w-xs text-xs">{engine?.help || 'Select or create a connection to begin'}</p>
+          </Popover>
+        </span>
       </Flex>
-      <Flex gap={2} align="center" className="compact-buttons">
+      <Flex gap={2} align="center" className="compact-buttons shrink-0">
         <Button variant={isConnected ? 'secondary' : 'default'} disabled={!active || busy} onClick={isConnected ? onDisconnect : onConnect}>
           {status === 'connecting' ? (
             <>
