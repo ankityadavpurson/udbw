@@ -36,9 +36,7 @@ export default function ObjectBrowser({ active, isConnected, connecting, tree, s
           label: (
             <span className="flex min-w-0 items-center gap-2">
               <span className="shrink-0 [&>svg]:h-3.5 [&>svg]:w-3.5">{typeIcon(type)}</span>
-              <span className="truncate" title={item.signature || item.name}>
-                {item.signature || item.name}
-              </span>
+              <span className="truncate">{item.signature || item.name}</span>
               {item.columns?.length ? (
                 <span className="ml-auto shrink-0 text-[11px] text-app-muted">{item.columns.length} cols</span>
               ) : item.metadata && item.type !== 'collection' ? (

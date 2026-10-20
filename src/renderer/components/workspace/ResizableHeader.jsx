@@ -1,3 +1,5 @@
+import { Tooltip } from 'xedonium';
+
 // A grid column title with a drag handle on its right edge. Dragging reports the new width in pixels.
 export default function ResizableHeader({ label, onResize }) {
   function startDrag(event) {
@@ -25,18 +27,19 @@ export default function ResizableHeader({ label, onResize }) {
   return (
     <span className="relative block min-w-0 pr-2">
       <span className="block truncate">{label}</span>
-      <span
-        role="separator"
-        aria-orientation="vertical"
-        aria-label={`Resize column ${label}`}
-        tabIndex={0}
-        onKeyDown={onKeyDown}
-        onKeyUp={e => e.stopPropagation()}
-        title="Drag, or use the left and right arrow keys, to resize"
-        onPointerDown={startDrag}
-        onClick={e => e.stopPropagation()}
-        className="absolute -right-2 -top-1 h-[calc(100%+0.5rem)] w-2 cursor-col-resize select-none hover:bg-app-soft/60 focus-visible:bg-app-soft/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-strong"
-      />
+      <Tooltip text="Drag, or use the left and right arrow keys, to resize" placement="top" className="absolute -right-2 -top-1 h-[calc(100%+0.5rem)] w-2">
+        <span
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={`Resize column ${label}`}
+          tabIndex={0}
+          onKeyDown={onKeyDown}
+          onKeyUp={e => e.stopPropagation()}
+          onPointerDown={startDrag}
+          onClick={e => e.stopPropagation()}
+          className="h-full w-full cursor-col-resize select-none hover:bg-app-soft/60 focus-visible:bg-app-soft/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-strong"
+        />
+      </Tooltip>
     </span>
   );
 }

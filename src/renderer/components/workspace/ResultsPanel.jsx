@@ -25,12 +25,14 @@ import {
   ToggleButtonGroup,
   Trash2Icon
 } from 'xedonium';
+import { Tooltip } from 'xedonium';
 import { engines } from '../../constants.js';
-import { EXPORT_FORMATS } from '../../lib/exporters.js';
+import { EXPORT_FORMATS, rowsToCsv } from '../../lib/exporters.js';
 import ResizableHeader from './ResizableHeader.jsx';
 import { isDocumentResult, toRecords, toTable } from '../../lib/results.js';
 import BrowseBar from './BrowseBar.jsx';
 import DocumentList from './DocumentList.jsx';
+import Tip from '../Tip.jsx';
 import StructureDialog from '../dialogs/StructureDialog.jsx';
 import Logo from '../Logo.jsx';
 import NestedValue, { plainText } from './NestedValue.jsx';
@@ -138,7 +140,6 @@ export default function ResultsPanel({
         <div
           className={`max-w-[26rem] [overflow-wrap:anywhere] ${dirty ? 'bg-app-strong/20 shadow-[inset_0_0_0_1px_rgb(var(--color-app-strong))]' : ''} ${row.__deleted ? 'text-app-muted line-through' : ''}`}
           style={widths[`c${j}`] ? { maxWidth: widths[`c${j}`] - 24 } : undefined}
-          title={locked ? 'Double-click or press Ctrl+C to copy' : 'Double-click or press F2 to edit · Ctrl+C to copy'}
           tabIndex={0}
           onDoubleClick={() => (locked ? copyCell(row[`c${j}`]) : startEdit())}
           onKeyDown={e => {
@@ -153,9 +154,9 @@ export default function ResultsPanel({
         >
           {row.__new && row[`c${j}`] === undefined ? <span className="text-app-muted">default</span> : <NestedValue value={row[`c${j}`]} />}
           {row.__dirty?.has(column) && (
-            <span className="ml-1 inline-block max-w-[10rem] truncate align-bottom text-[11px] text-app-muted" title={`Original value: ${plainText(row.__original?.[column])}`}>
-              was {plainText(row.__original?.[column])}
-            </span>
+            <Tooltip text={`Original value: ${plainText(row.__original?.[column])}`} placement="top" className="ml-1 max-w-[10rem] align-bottom">
+              <span className="block max-w-full truncate text-[11px] text-app-muted">was {plainText(row.__original?.[column])}</span>
+            </Tooltip>
           )}
         </div>
       );
@@ -251,26 +252,33 @@ export default function ResultsPanel({
         <Flex gap={2} wrap align="center" className="compact-buttons px-2">
           <Button
             variant="secondary"
+            tooltip={inline ? 'Add a new row (saved with Apply changes)' : 'Add a new record'}
             disabled={readOnly || !records.selectedObject || !['table', 'collection'].includes(records.selectedObject.type)}
             onClick={() => (inline ? gridEdits.addRow() : openEditor('insert'))}
           >
             <PlusIcon /> Insert
           </Button>
-          <Button variant="secondary" disabled={readOnly || !canEditSelected} onClick={() => openEditor('edit')}>
+          <Button variant="secondary" tooltip="Edit the selected record in a form" disabled={readOnly || !canEditSelected} onClick={() => openEditor('edit')}>
             <EditIcon /> Edit
           </Button>
           <Button
             variant="danger"
+            tooltip={inline ? 'Mark the selected rows for deletion (saved with Apply changes)' : 'Delete the selected records'}
             disabled={readOnly || !canDeleteSelected}
             onClick={() => (inline ? gridEdits.markDeleted(selected.filter(i => typeof i === 'number')) : selectedCount > 1 ? setBulkOpen(true) : openEditor('delete'))}
           >
             <Trash2Icon /> {selectedCount > 1 ? `Delete ${selectedCount}` : 'Delete'}
           </Button>
           <Divider orientation="vertical" className="h-6" />
-          <Button variant="secondary" disabled={selectedCount !== 1} onClick={() => setViewerOpen(true)}>
+          <Button variant="secondary" tooltip="Show the selected record as JSON" disabled={selectedCount !== 1} onClick={() => setViewerOpen(true)}>
             <EyeIcon /> View record
           </Button>
-          <Button variant="secondary" disabled={!hasSelection} onClick={() => onCopyRows(selectedCount === 1 ? selectedJson : selectedDocs)}>
+          <Button
+            variant="secondary"
+            tooltip={view === 'json' ? 'Copy the selected rows as JSON' : 'Copy the selected rows as CSV, with the column names'}
+            disabled={!hasSelection}
+            onClick={() => onCopyRows(view === 'json' ? (selectedCount === 1 ? selectedJson : selectedDocs) : rowsToCsv(result, selected))}
+          >
             <CopyIcon /> {selectedCount > 1 ? 'Copy rows' : 'Copy row'}
           </Button>
           <Button variant="flat" disabled={!isConnected || busy} tooltip="Re-run query" onClick={onRerun}>
@@ -336,21 +344,23 @@ export default function ResultsPanel({
             <ToggleButton value="json">JSON</ToggleButton>
           </ToggleButtonGroup>
           {hasStructure && (
-            <Button variant="secondary" onClick={() => setStructureOpen(true)}>
+            <Button variant="secondary" tooltip="Columns, types and keys of this table" onClick={() => setStructureOpen(true)}>
               <ListIcon /> Structure
             </Button>
           )}
-          <ActionMenu
-            label="Export results"
-            variant="secondary"
-            placement="bottom-end"
-            trigger={
-              <>
-                <DownloadIcon /> Export
-              </>
-            }
-            items={exportItems}
-          />
+          <Tip text="Save the results as CSV, JSON, SQL or Excel" align="end">
+            <ActionMenu
+              label="Export results"
+              variant="secondary"
+              placement="bottom-end"
+              trigger={
+                <>
+                  <DownloadIcon /> Export
+                </>
+              }
+              items={exportItems}
+            />
+          </Tip>
         </Flex>
       }
     >

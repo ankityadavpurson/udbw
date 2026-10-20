@@ -66,7 +66,19 @@ const fake = {
   },
   async describe(_session, object) {
     received.push({ kind: 'describe', object: object.name });
-    return { columns, columnInfo: [], primaryKey: ['id'], indexes: [] };
+    return {
+      columns,
+      columnInfo: [
+        { name: 'id', type: 'int unsigned', nullable: false, defaultValue: null, auto: true },
+        { name: 'name', type: 'varchar(100)', nullable: false, defaultValue: null, auto: false },
+        { name: 'note', type: 'text', nullable: true, defaultValue: null, auto: false }
+      ],
+      primaryKey: ['id'],
+      indexes: [
+        { name: 'PRIMARY', unique: true, columns: ['id'] },
+        { name: 'users_name', unique: true, columns: ['name'] }
+      ]
+    };
   },
   async switchDatabase() {},
   isWrite: text => !/^\s*(select|show|describe|explain)/i.test(text)
@@ -152,10 +164,31 @@ app.whenReady().then(async () => {
     const lastQuery = () => received.filter(r => r.kind === 'query').pop();
 
     check('a run from source is marked [DEV] in the title bar', /\[DEV\]/.test(await text()));
+    // Hovering a connection in the list explains it.
+    const rowPos = await run(
+      `(() => { const b = [...document.querySelectorAll('li button')].find(x => /shop db/i.test(x.textContent)); const r = b.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`
+    );
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: rowPos.x - 5, y: rowPos.y });
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: rowPos.x, y: rowPos.y });
+    await sleep(150);
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: rowPos.x + 3, y: rowPos.y + 1 });
+    for (let i = 0; i < 10 && !/double-click to connect/i.test(await text()); i += 1) {
+      await sleep(400);
+      win.webContents.sendInputEvent({ type: 'mouseMove', x: rowPos.x + 3 + (i % 2), y: rowPos.y + 1 });
+    }
+    check('hovering a connection shows its details', /double-click to connect/i.test(await text()) && /h:3306/.test(await text()), (await text()).slice(0, 300));
+    if (process.env.SHOT) require('fs').writeFileSync(process.env.SHOT, (await win.webContents.capturePage()).toPNG());
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: 700, y: 600 });
+    await sleep(200);
     check('UI renders the saved connection and its environment', /production/.test(await text()));
-    await run(`window.__t.click('Connect')`);
+    // Double-clicking a connection in the sidebar connects it.
+    await run(`void (() => {
+      const item = [...document.querySelectorAll('li button')].find(b => /shop db/i.test(b.textContent));
+      item.click();
+      item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    })()`);
     await sleep(1500);
-    check('connecting lists the objects', /users/.test(await text()) && /orders/.test(await text()));
+    check('connecting by double click lists the objects', /users/.test(await text()) && /orders/.test(await text()));
 
     await run(`window.__t.click('users')`);
     await sleep(1500);
@@ -166,9 +199,37 @@ app.whenReady().then(async () => {
     check('and browses page 1 with one extra row', lastQuery()?.text === 'SELECT * FROM `shop`.`users` LIMIT 101 OFFSET 0;', lastQuery()?.text);
     const page = await text();
     check('the page shows 100 rows and a page indicator', /Page 1/.test(page) && /user 100/.test(page) && !/user 101\b/.test(page));
+    // Text is not selectable like a web page, except where people copy from.
+    const selectable = await run(`(() => {
+      const us = el => (el ? getComputedStyle(el).userSelect : 'missing');
+      return { body: us(document.body), editor: us(document.querySelector('textarea[aria-label="Query editor"]')), cell: us(document.querySelector('td')), heading: us(document.querySelector('h1, h2')) };
+    })()`);
+    check(
+      'page text is not selectable, but fields and result cells are',
+      selectable.body === 'none' && selectable.editor === 'text' && selectable.cell === 'text',
+      JSON.stringify(selectable)
+    );
+
+    // The Structure dialog: columns with their key marks, indexes and a legend.
+    await run(`window.__t.buttons().find(b => /structure/i.test(b.textContent))?.click()`);
+    await sleep(500);
+    const structure = await text();
+    check(
+      'Structure lists columns with PK, UQ and AUTO marks',
+      /Structure · users/i.test(structure) && /\bPK\b/.test(structure) && /\bUQ\b/.test(structure) && /\bAUTO\b/.test(structure),
+      structure.slice(0, 200)
+    );
+    check('and a legend that explains them', /primary key/i.test(structure) && /filled in by the database/i.test(structure));
+    if (process.env.SHOT) require('fs').writeFileSync(process.env.SHOT, (await win.webContents.capturePage()).toPNG());
+    await run(`window.__t.buttons().find(b => /^\\s*indexes/i.test(b.textContent))?.click()`);
+    await sleep(300);
+    check('the Indexes tab shows each index with its columns', /users_name/.test(await text()) && /UNIQUE/.test(await text()));
+    await run(`window.__t.buttons().find(b => b.textContent.trim() === 'Close')?.click()`);
+    await sleep(300);
+
     // Inline editing: change a cell, see it pending, then apply it as one transaction.
     await run(`void (() => {
-      const cell = [...document.querySelectorAll('td div[title*="F2"]')].find(el => el.textContent.trim() === 'user 2');
+      const cell = [...document.querySelectorAll('td div[tabindex="0"]')].find(el => el.textContent.trim() === 'user 2');
       cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     })()`);
     await sleep(300);
@@ -231,6 +292,24 @@ app.whenReady().then(async () => {
     await run(`window.__t.setEditor("select * from us")`);
     await sleep(500);
     check('autocomplete offers the table', /users/.test(await run(`[...document.querySelectorAll('[role=listbox] [role=option]')].map(o => o.textContent).join('|')`)));
+    // A menu trigger's tooltip shows on hover, but never on top of the menu once it is open.
+    const toolsPos = await run(
+      `(() => { const b = [...document.querySelectorAll('button')].find(x => /^\\s*tools\\s*$/i.test(x.textContent)); const r = b.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`
+    );
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: toolsPos.x, y: toolsPos.y });
+    await sleep(150);
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: toolsPos.x + 2, y: toolsPos.y + 1 });
+    await sleep(900);
+    check('a menu trigger shows its tooltip on hover', /Format SQL, explain a query/.test(await text()));
+    for (const type of ['mouseDown', 'mouseUp']) win.webContents.sendInputEvent({ type, x: toolsPos.x + 2, y: toolsPos.y + 1, button: 'left', clickCount: 1 });
+    await sleep(300);
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: toolsPos.x + 3, y: toolsPos.y + 1 });
+    await sleep(1000);
+    check('and not while its menu is open', /explain analyze/i.test(await text()) && !/Format SQL, explain a query/.test(await text()), (await text()).slice(0, 200));
+    await run(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+    await sleep(300);
     await run(`window.__t.setEditor("select a,b from t where x=1 and y=2")`);
     await run(`window.__t.buttons().find(b => /Tools/.test(b.textContent))?.click()`);
     await sleep(300);

@@ -53,11 +53,11 @@ export default function BrowseBar({ browse, columns, language, loading, hasNext,
         />
       </div>
       <Flex gap={1} align="center" className="compact-buttons">
-        <Button variant="secondary" aria-label="Previous page" disabled={loading || browse.page === 0} onClick={() => onChange({ page: browse.page - 1 })}>
+        <Button variant="secondary" tooltip="Previous page" aria-label="Previous page" disabled={loading || browse.page === 0} onClick={() => onChange({ page: browse.page - 1 })}>
           <ChevronLeftIcon />
         </Button>
         <span className="min-w-[4.5rem] text-center text-xs text-app-muted">Page {browse.page + 1}</span>
-        <Button variant="secondary" aria-label="Next page" disabled={loading || !hasNext} onClick={() => onChange({ page: browse.page + 1 })}>
+        <Button variant="secondary" tooltip="Next page" aria-label="Next page" disabled={loading || !hasNext} onClick={() => onChange({ page: browse.page + 1 })}>
           <ChevronRightIcon />
         </Button>
       </Flex>

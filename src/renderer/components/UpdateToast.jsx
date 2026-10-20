@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Flex, XIcon } from 'xedonium';
+import { Button, Flex, Tooltip, XIcon } from 'xedonium';
 
 // The automatic update check reports here, never in a dialog: a toast that stays until it is dismissed.
 // The main process sends { kind: 'available' | 'downloading' | 'ready' | 'error', version?, percent?, message? } (or null).
@@ -72,9 +72,11 @@ export default function UpdateToast() {
           </>
         )}
       </div>
-      <button type="button" aria-label="Dismiss" onClick={dismiss} className="shrink-0 text-app-muted hover:text-app-text [&>svg]:h-4 [&>svg]:w-4">
-        <XIcon />
-      </button>
+      <Tooltip text="Dismiss" placement="top">
+        <button type="button" aria-label="Dismiss" onClick={dismiss} className="shrink-0 text-app-muted hover:text-app-text [&>svg]:h-4 [&>svg]:w-4">
+          <XIcon />
+        </button>
+      </Tooltip>
     </div>
   );
 }
