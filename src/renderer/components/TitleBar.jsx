@@ -21,7 +21,7 @@ export default function TitleBar() {
     >
       <Logo />
       <span className="truncate text-xs font-semibold">UDBW</span>
-      {isDev && <span className="shrink-0 text-xs font-semibold text-[#e0bf00]">[DEV]</span>}
+      {isDev && <span className="shrink-0 text-xs font-semibold text-[#8f6d00] dark:text-[#e0bf00]">[DEV]</span>}
     </div>
   );
 }

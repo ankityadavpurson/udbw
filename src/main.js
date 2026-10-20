@@ -4,7 +4,7 @@ const windowState = require('./main/window');
 const { registerIpc } = require('./main/ipc');
 const sessions = require('./main/sessions');
 const { installCrashHandlers, logger } = require('./main/logger');
-const { checkForUpdates } = require('./main/updater');
+const { scheduleUpdateChecks } = require('./main/updater');
 
 // A run from source (`yarn dev` / `yarn start`) keeps its data in its own folder. Otherwise it would share the saved
 // connections and the single-instance lock with an installed copy, which would just be brought forward instead of starting.
@@ -36,7 +36,7 @@ app.whenReady().then(() => {
   windowState.createSplash();
   windowState.createWindow();
   logger.info(`Started UDBW ${app.getVersion()} on ${process.platform} (Electron ${process.versions.electron})`);
-  setTimeout(() => checkForUpdates({ silent: true }), 15000); // only does something in a release build
+  scheduleUpdateChecks(); // every 24 hours; only does something in a release build
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) windowState.createWindow();
   });

@@ -26,6 +26,23 @@ contextBridge.exposeInMainWorld('workbench', {
     return () => ipcRenderer.removeListener('unsaved:ask', handler);
   },
   answerDiscard: ok => ipcRenderer.send('unsaved:answer', ok === true),
+  onUpdateNotice: callback => {
+    const handler = (_event, notice) => callback(notice);
+    ipcRenderer.on('update:show', handler);
+    return () => ipcRenderer.removeListener('update:show', handler);
+  },
+  onUpdateToast: callback => {
+    const handler = (_event, toast) => callback(toast);
+    ipcRenderer.on('update:toast', handler);
+    return () => ipcRenderer.removeListener('update:toast', handler);
+  },
+  updateToastState: () => ipcRenderer.invoke('update:toast-state'),
+  downloadUpdate: () => ipcRenderer.send('update:download'),
+  installUpdate: () => ipcRenderer.send('update:install'),
+  dismissUpdate: () => ipcRenderer.send('update:dismiss'),
+  answerUpdate: choice => ipcRenderer.send('update:answer', choice),
+  checkForUpdates: () => ipcRenderer.send('app:check-updates'),
+  appVersion: () => ipcRenderer.invoke('app:version'),
   reportUnsaved: count => ipcRenderer.send('unsaved:report', count),
   reportTheme: theme => ipcRenderer.send('theme:report', theme),
   onSetTheme: callback => {

@@ -41,6 +41,10 @@ function registerIpc() {
   ipcMain.on('log:renderer', (event, entry) => {
     if (fromMainWindow(event)) logger.error('[renderer]', String(entry?.message || '').slice(0, 1000), String(entry?.stack || '').slice(0, 3000));
   });
+  ipcMain.on('app:check-updates', event => {
+    if (fromMainWindow(event)) require('./updater').checkForUpdates();
+  });
+  ipcMain.handle('app:version', event => (fromMainWindow(event) ? app.getVersion() : ''));
   ipcMain.on('unsaved:report', (event, count) => {
     if (fromMainWindow(event)) windowState.setUnsavedChanges(count);
   });
