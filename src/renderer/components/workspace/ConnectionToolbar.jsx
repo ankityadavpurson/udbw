@@ -1,4 +1,6 @@
 import { Button, Chip, CodeIcon, Flex, InfoIcon, Loader, LockIcon, Menu, MenuIcon, MoreVerticalIcon, PlayIcon, Popover, PowerIcon, XIcon } from 'xedonium';
+import HelpText from '../HelpText.jsx';
+import { languageFor } from '../../lib/tokenize.js';
 import StatusDot from '../StatusDot.jsx';
 
 const ENV_TONE = { production: 'danger', staging: 'warning', development: 'success' };
@@ -44,7 +46,7 @@ export default function ConnectionToolbar({
         )}
         <span className="compact-buttons compact-icons shrink-0">
           <Popover label="About this connection" variant="flat" trigger={<InfoIcon />}>
-            <p className="max-w-xs text-xs">{engine?.help || 'Select or create a connection to begin'}</p>
+            <HelpText text={engine?.help || 'Select or create a connection to begin'} language={languageFor(active)} />
           </Popover>
         </span>
       </Flex>

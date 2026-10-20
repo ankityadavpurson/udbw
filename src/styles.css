@@ -45,9 +45,13 @@ body {
   overflow: hidden;
 }
 
-/* Compact density: one set of sizes shared by buttons, fields, tables, tabs, cards and dialogs. */
+/* Compact density: one set of sizes shared by buttons, fields, tables, tabs, cards and dialogs.
+   Buttons and fields share one control height so they line up in a row. */
+:root {
+  --control-h: 1.75rem;
+}
 .compact-buttons button {
-  height: 1.5rem !important;
+  height: var(--control-h) !important;
   min-height: 0 !important;
   padding: 0 0.625rem !important;
   font-size: 11px !important;
@@ -62,7 +66,7 @@ body {
 
 .compact-fields button[aria-haspopup],
 .compact-fields input:not([type='checkbox']):not([type='radio']) {
-  height: 1.75rem !important;
+  height: var(--control-h) !important;
   min-height: 0 !important;
   padding-top: 0 !important;
   padding-bottom: 0 !important;
