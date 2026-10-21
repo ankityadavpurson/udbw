@@ -1,10 +1,18 @@
 // `yarn dev`: serves the UI with Vite (hot reload) and opens Electron on it. Closing the window stops the server.
 import { createServer } from 'vite';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const electron = require('electron'); // the path of the Electron binary
+
+// macOS names the app menu after the bundle, which is "Electron" for the stock binary. Packaged builds get "UDBW" from
+// `productName`; for `yarn dev` the bundle's Info.plist in node_modules is renamed (idempotent, restored by a reinstall).
+if (process.platform === 'darwin') {
+  const plist = path.join(path.dirname(electron), '..', 'Info.plist');
+  for (const key of ['CFBundleName', 'CFBundleDisplayName']) spawnSync('plutil', ['-replace', key, '-string', 'UDBW', plist]);
+}
 
 const server = await createServer({ configFile: 'vite.config.js' });
 await server.listen();

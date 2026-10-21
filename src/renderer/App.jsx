@@ -342,7 +342,7 @@ export default function App() {
   return (
     <>
       <div className="flex h-full flex-col overflow-hidden bg-app-bg text-app-text">
-        <TitleBar />
+        <TitleBar connectionName={active?.name} />
         <div className="flex min-h-0 flex-1">
           {isMd && <aside className="shrink-0">{sidebar(() => {}, false, !isLg)}</aside>}
           <main className="min-w-0 flex-1 overflow-y-auto">
