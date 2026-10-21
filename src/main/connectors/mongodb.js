@@ -1,4 +1,6 @@
 const { relaxedToJson, closingParen, readString } = require('./relaxed');
+const { checkMongoDatabase, checkMongoCollection } = require('./create');
+const { formatBytes, formatCount, group } = require('./info');
 
 const HARD_LIMIT = 100000;
 
@@ -350,6 +352,55 @@ async function mutate(session, op) {
   return write(session, { action: 'update', collection, id: op.id, update });
 }
 
+// MongoDB only keeps a database once it holds a collection, so a new database is created together with its first collection.
+async function create(session, spec) {
+  if (spec.kind === 'database') {
+    const name = checkMongoDatabase(spec.name);
+    const first = checkMongoCollection(spec.collection);
+    await session.client.db(name).createCollection(first);
+    return { message: `Created database ${name} with collection ${first}`, database: name };
+  }
+  if (spec.kind === 'collection') {
+    const name = checkMongoCollection(spec.name);
+    await session.client.db(session.database).createCollection(name);
+    return { message: `Created collection ${name}` };
+  }
+  throw new Error('MongoDB can create databases and collections.');
+}
+
+// Size, document and index counts of the database (dbStats), plus the server version when the account may read it.
+async function info(session, database) {
+  const name = database || session.database;
+  const db = session.client.db(name);
+  const stats = await db.command({ dbStats: 1 });
+  let server = {};
+  try {
+    server = await session.client.db('admin').command({ buildInfo: 1 });
+  } catch (_) {
+    /* the account may not be allowed to read it */
+  }
+  return {
+    name,
+    subtitle: `MongoDB${server.version ? ` ${server.version}` : ''}`,
+    groups: [
+      group('Database details', [
+        { label: 'Data size', value: formatBytes(stats.dataSize) },
+        { label: 'Storage size', value: formatBytes(stats.storageSize) },
+        { label: 'Index size', value: formatBytes(stats.indexSize) },
+        { label: 'Total size', value: formatBytes(stats.totalSize) },
+        { label: 'Average document size', value: formatBytes(stats.avgObjSize) }
+      ]),
+      group('Contents', [
+        { label: 'Collections', value: formatCount(stats.collections) },
+        { label: 'Views', value: formatCount(stats.views) },
+        { label: 'Documents', value: formatCount(stats.objects) },
+        { label: 'Indexes', value: formatCount(stats.indexes) }
+      ]),
+      group('Server', [{ label: 'Version', value: server.version }])
+    ]
+  };
+}
+
 async function discover(session, database) {
   const adminDb = session.client.db('admin');
   let databases = [],
@@ -365,4 +416,4 @@ async function discover(session, database) {
   return { databases, schemas: [], objects: collections.map(c => ({ name: c.name, type: 'collection', metadata: c.type || '' })), message };
 }
 
-module.exports = { connect, close, query, cancel, mutate, switchDatabase, discover, isWrite, parseCommand, idFilter, plain };
+module.exports = { connect, close, query, cancel, mutate, create, info, switchDatabase, discover, isWrite, parseCommand, idFilter, plain };

@@ -58,7 +58,8 @@ export default function ResultsPanel({
   onCopyRows,
   onExport,
   onLoadMore,
-  onBrowse
+  onBrowse,
+  onEditStructure
 }) {
   const { result, error, view, meta, selected } = tab;
   const [structureOpen, setStructureOpen] = useState(false);
@@ -367,7 +368,7 @@ export default function ResultsPanel({
       {browsing && <BrowseBar browse={tab.browse} columns={browseColumns} language={language} loading={tab.running} hasNext={tab.hasNext} onChange={onBrowse} />}
       {limitNote}
       {body()}
-      <StructureDialog open={structureOpen} onClose={() => setStructureOpen(false)} object={object} />
+      <StructureDialog open={structureOpen} onClose={() => setStructureOpen(false)} object={object} onEdit={onEditStructure} />
     </Card>
   );
 }

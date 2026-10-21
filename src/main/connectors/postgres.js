@@ -1,5 +1,7 @@
 const { normalizePgResult, buildSqlMutation, mutationResult, applyBatch } = require('./sql');
+const { buildAlterSql, buildCreateSql } = require('./create');
 const { capSql, sqlIsWrite } = require('../sqlText');
+const { formatBytes, formatCount, group } = require('./info');
 const { logger } = require('../logger');
 
 // When the form's TLS options are on they decide verification, so drop `sslmode=` from the string: pg would otherwise
@@ -100,6 +102,31 @@ async function mutateBatch(session, ops) {
   });
 }
 
+// Creates a database, schema or table. A new table without a schema goes where the session's search_path puts it.
+async function create(session, spec, { preview = false } = {}) {
+  const sql = buildCreateSql('postgres', spec);
+  if (preview) return { statements: [sql] };
+  await session.client.query(sql);
+  return { message: `Created ${spec.kind} ${spec.name}`, statements: [sql] };
+}
+
+// Changes a table's columns or name, all in one transaction (PostgreSQL can roll DDL back). `preview` only returns the SQL.
+async function alter(session, { object, ops }, { preview = false } = {}) {
+  const { columnInfo } = await describe(session, object || {});
+  const statements = buildAlterSql('postgres', object, ops, Object.fromEntries(columnInfo.map(column => [column.name, column])));
+  if (preview) return { statements };
+  const client = session.client;
+  await client.query('BEGIN');
+  try {
+    for (const sql of statements) await client.query(sql);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  }
+  return { message: `Changed table ${object.name}`, statements };
+}
+
 const KIND = {
   r: { type: 'table', metadata: '' },
   p: { type: 'table', metadata: 'partitioned table' },
@@ -137,6 +164,58 @@ async function discover(session, database, schema) {
   return { databases: dbResult.rows.map(r => r.name), schemas: schemaResult.rows.map(r => r.name), objects, message: '' };
 }
 
+// Encoding, collation, owner, size and object counts of the current database, plus the server version.
+async function info(session) {
+  const client = await meta(session);
+  const db = await client.query(
+    `SELECT d.datname AS name, pg_catalog.pg_get_userbyid(d.datdba) AS owner, pg_encoding_to_char(d.encoding) AS encoding, d.datcollate AS collation,
+            d.datctype AS ctype, pg_database_size(d.datname) AS size, d.datconnlimit AS connlimit, version() AS version, current_setting('server_version') AS short
+     FROM pg_database d WHERE d.datname = current_database()`
+  );
+  const row = db.rows[0];
+  if (!row) throw new Error('The current database could not be read.');
+  const counts = await client.query(
+    `SELECT
+       count(*) FILTER (WHERE c.relkind IN ('r','p')) AS tables, count(*) FILTER (WHERE c.relkind = 'v') AS views,
+       count(*) FILTER (WHERE c.relkind = 'm') AS matviews, count(*) FILTER (WHERE c.relkind = 'S') AS sequences,
+       count(*) FILTER (WHERE c.relkind IN ('i','I')) AS indexes
+     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'`
+  );
+  const extras = await client.query(
+    `SELECT (SELECT count(*) FROM pg_namespace WHERE nspname <> 'information_schema' AND nspname !~ '^pg_') AS schemas,
+            (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'
+               AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')) AS functions,
+            (SELECT count(*) FROM pg_extension) AS extensions`
+  );
+  const c = counts.rows[0];
+  const e = extras.rows[0];
+  return {
+    name: row.name,
+    subtitle: `PostgreSQL ${row.short}`,
+    groups: [
+      group('Database details', [
+        { label: 'Owner', value: row.owner },
+        { label: 'Encoding', value: row.encoding },
+        { label: 'Collation', value: row.collation },
+        { label: 'Character type', value: row.ctype },
+        { label: 'Database size', value: formatBytes(row.size) },
+        { label: 'Connection limit', value: row.connlimit < 0 ? 'Unlimited' : String(row.connlimit) }
+      ]),
+      group('Contents', [
+        { label: 'Schemas', value: formatCount(e.schemas) },
+        { label: 'Tables', value: formatCount(c.tables) },
+        { label: 'Views', value: formatCount(c.views) },
+        { label: 'Materialized views', value: formatCount(c.matviews) },
+        { label: 'Sequences', value: formatCount(c.sequences) },
+        { label: 'Indexes', value: formatCount(c.indexes) },
+        { label: 'Functions and procedures', value: formatCount(e.functions) },
+        { label: 'Extensions', value: formatCount(e.extensions) }
+      ]),
+      group('Server', [{ label: 'Version', value: row.version }])
+    ]
+  };
+}
+
 async function describe(session, object) {
   const client = await meta(session);
   const schema = object.schema || 'public';
@@ -172,4 +251,4 @@ async function describe(session, object) {
   };
 }
 
-module.exports = { connect, close, query, cancel, mutate, mutateBatch, discover, describe, isWrite };
+module.exports = { connect, close, query, cancel, mutate, mutateBatch, create, alter, info, discover, describe, isWrite };

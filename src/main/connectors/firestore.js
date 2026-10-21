@@ -1,5 +1,7 @@
 const fs = require('fs');
 const { relaxedToJson, readString } = require('./relaxed');
+const { checkFirestoreCollection } = require('./create');
+const { formatCount, group } = require('./info');
 
 // The Admin SDK is loaded on first use to keep app start-up light.
 const admin = () => require('firebase-admin');
@@ -281,6 +283,37 @@ async function mutate(session, op) {
   return write(session, { action: op.action, collection, id: op.id, record: op.record, changes: op.changes, unset: op.unset });
 }
 
+// Firestore has no empty collections: one exists only while it holds a document, so it is created with its first one.
+async function create(session, spec) {
+  if (spec.kind !== 'collection') throw new Error('Firestore can create collections.');
+  const name = checkFirestoreCollection(spec.name);
+  const id = spec.id ? String(spec.id) : undefined;
+  if (id && (id.includes('/') || id === '.' || id === '..')) throw new Error('A document id cannot contain "/" or be "." or "..".');
+  const document = spec.document && typeof spec.document === 'object' && !Array.isArray(spec.document) ? spec.document : {};
+  await write(session, { action: 'insert', collection: name, id, record: document });
+  return { message: `Created collection ${name} with its first document` };
+}
+
+// Firestore reports no sizes; the dialog shows the project and its top-level collections.
+async function info(session) {
+  const collections = await session.db.listCollections();
+  const names = collections.map(c => c.id);
+  return {
+    name: session.projectId || 'Firestore',
+    subtitle: 'Firebase Firestore',
+    groups: [
+      group('Project details', [
+        { label: 'Project ID', value: session.projectId },
+        { label: 'Database', value: '(default)' }
+      ]),
+      group('Contents', [
+        { label: 'Top-level collections', value: formatCount(names.length) },
+        { label: 'Collection names', value: names.slice(0, 30).join(', ') + (names.length > 30 ? ` and ${names.length - 30} more` : '') }
+      ])
+    ]
+  };
+}
+
 async function discover(session) {
   const collections = await session.db.listCollections();
   return {
@@ -291,4 +324,4 @@ async function discover(session) {
   };
 }
 
-module.exports = { connect, close, query, cancel, mutate, discover, isWrite, parseCommand, encode, decode };
+module.exports = { connect, close, query, cancel, mutate, create, info, discover, isWrite, parseCommand, encode, decode };

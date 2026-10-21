@@ -151,6 +151,26 @@ function mutate(session, op) {
   return run(session, { action: op.action, table: op.object.name, keyColumn: op.keyColumn, id: op.id, record: op.record, changes: op.changes });
 }
 
+// The project behind the API and how many tables it lists (see discover).
+async function info(session) {
+  const listed = await discover(session);
+  const host = (() => {
+    try {
+      return new URL(session.restUrl).host;
+    } catch (_) {
+      return session.restUrl;
+    }
+  })();
+  return {
+    name: host,
+    subtitle: 'Supabase REST API',
+    groups: [
+      { title: 'Project details', items: [{ label: 'Project URL', value: session.restUrl }] },
+      { title: 'Contents', items: [{ label: 'Tables listed by the API', value: String(listed.objects.length) }] }
+    ]
+  };
+}
+
 // Tables are read from the API's own description (PostgREST serves an OpenAPI document at the root). Some projects only
 // allow that to the service-role key; then the list stays empty and tables are opened by typing `REST: table`.
 async function discover(session) {
@@ -167,4 +187,4 @@ async function discover(session) {
   }
 }
 
-module.exports = { connect, close, query, cancel, mutate, discover, isWrite, parseCommand };
+module.exports = { connect, close, query, cancel, mutate, info, discover, isWrite, parseCommand };
