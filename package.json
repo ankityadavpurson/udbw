@@ -69,6 +69,7 @@
       "build/icon.png",
       "build/icon-mac.png",
       "src/splash.html",
+      "src/about.html",
       "dist/**/*",
       "package.json"
     ],

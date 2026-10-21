@@ -36,7 +36,6 @@ app.whenReady().then(() => {
   if (!primary) return;
   // A run from source shows Electron's own icon in the dock; the packaged app gets its icon from the bundle.
   if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(path.join(__dirname, '..', 'build', 'icon-mac.png'));
-  app.setAboutPanelOptions({ applicationName: 'UDBW', applicationVersion: app.getVersion(), version: '', copyright: 'Universal DB Workbench' });
   windowState.hardenWebContents();
   windowState.buildAppMenu();
   windowState.createSplash();

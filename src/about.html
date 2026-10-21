@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en" class="{{THEME}}">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:" />
+    <title>About UDBW</title>
+    <style>
+      :root {
+        --bg: #141414;
+        --text: #ffffff;
+        --muted: #9a9aa3;
+        --border: #3a3a40;
+        --hover: rgba(255, 255, 255, 0.08);
+      }
+      :root.light {
+        --bg: #ffffff;
+        --text: #0d0d0d;
+        --muted: #6b6b75;
+        --border: #d4d4da;
+        --hover: rgba(0, 0, 0, 0.06);
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 28px 32px 32px;
+        box-sizing: border-box;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          13px/1.4 -apple-system,
+          'Segoe UI',
+          Inter,
+          system-ui,
+          sans-serif;
+        -webkit-app-region: drag;
+        user-select: none;
+        text-align: center;
+      }
+      svg {
+        width: 84px;
+        height: 84px;
+        margin-bottom: 14px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+      }
+      .links {
+        display: flex;
+        flex-direction: column;
+        align-self: stretch;
+        gap: 10px;
+        margin-top: 22px;
+        -webkit-app-region: no-drag;
+      }
+      a {
+        padding: 9px 0;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        font-weight: 600;
+        text-decoration: none;
+      }
+      a:hover,
+      a:focus-visible {
+        background: var(--hover);
+        outline: none;
+      }
+    </style>
+  </head>
+  <body>
+    <svg viewBox="0 0 512 512" aria-hidden="true">
+      <rect width="512" height="512" rx="115" fill="#252529" />
+      <g transform="translate(87 87) scale(14.08)" fill="#ffffff">
+        <path
+          d="M4 2H2v8h2V2zm16 0h2v8h-2V2zm-6 6h-4V2H4v2h4v4H4v2h4v4H4v2h4v4H4v2h6v-6h4v6h2v-6h4v-2h-4v-4h4V8h-4V2h-2v6zm-4 6v-4h4v4h-4zM20 2h-4v2h4V2zM2 14h2v8H2v-8zm14 6h4v2h-4v-2zm6-6h-2v8h2v-8z"
+        />
+      </g>
+    </svg>
+    <h1>UDBW</h1>
+    <p>Version {{VERSION}}</p>
+    <p>Universal DB Workbench</p>
+    <p>Copyright © Ankit Yadav</p>
+    <div class="links">
+      <a href="https://ankityadavpurson.github.io/udbw/" target="_blank" rel="noreferrer">Help</a>
+      <a href="https://github.com/ankityadavpurson/udbw/issues" target="_blank" rel="noreferrer">Report an issue</a>
+    </div>
+  </body>
+</html>

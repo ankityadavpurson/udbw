@@ -49,7 +49,7 @@ export default function ConnectionToolbar({
         )}
         <span className="compact-buttons compact-icons shrink-0">
           <Tip text="What can I type here?" align="start">
-            <Popover label="About this connection" variant="flat" trigger={<InfoIcon />}>
+            <Popover label="About this connection" variant="flat" trigger={<InfoIcon className="h-4 w-4 shrink-0" />}>
               <HelpText text={engine?.help || 'Select or create a connection to begin'} language={languageFor(active)} />
             </Popover>
           </Tip>
