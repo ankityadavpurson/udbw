@@ -2,7 +2,7 @@
 
 Free code signing will be provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org), once our application is approved.
 
-Until then, installers are **unsigned** and Windows shows "Unknown publisher". When signing is switched on, the publisher shown on signed installers will be "SignPath Foundation", and this page will be updated to say so.
+Until then, installers are **unsigned**. Windows shows "Unknown publisher", and macOS may report the app as "damaged" until the quarantine mark is removed (see the [download page](/download/) for the one-line fix). When signing is switched on, the publisher shown on signed installers will be "SignPath Foundation", and this page will be updated to say so.
 
 ## How builds are produced
 
