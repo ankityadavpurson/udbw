@@ -174,6 +174,47 @@ function registerIpc() {
     }))
   );
 
+  // New database, schema, table or collection. The connector validates and quotes every name itself.
+  // The "Database info" dialog: size, charset, object counts, server version.
+  handle('db:info', ({ id, database }) =>
+    attempt(async () => ({
+      result: await sessions.withSession(
+        id,
+        s => {
+          const connector = sessions.connectorFor(s.type);
+          if (!connector.info) throw new Error('This connection cannot show database info.');
+          return connector.info(s, database || undefined);
+        },
+        { retry: true }
+      )
+    }))
+  );
+
+  // `preview` only returns the SQL that would run (SQL engines), so the dialog can show it before anything changes.
+  handle('db:create', ({ id, spec, preview }) =>
+    attempt(async () => ({
+      result: await sessions.withSession(id, s => {
+        if (s.profile.readOnly && !preview) throw readOnlyError();
+        const connector = sessions.connectorFor(s.type);
+        if (!connector.create) throw new Error('This connection cannot create databases, tables or collections.');
+        if (preview && !connector.alter) return { statements: [] }; // only the SQL engines can show what would run
+        return connector.create(s, spec || {}, { preview: preview === true });
+      })
+    }))
+  );
+
+  // Changes the columns or the name of a table (SQL engines).
+  handle('db:alter', ({ id, object, ops, preview }) =>
+    attempt(async () => ({
+      result: await sessions.withSession(id, s => {
+        if (s.profile.readOnly && !preview) throw readOnlyError();
+        const connector = sessions.connectorFor(s.type);
+        if (!connector.alter) throw new Error('This connection cannot change a table structure.');
+        return connector.alter(s, { object: object || {}, ops }, { preview: preview === true });
+      })
+    }))
+  );
+
   handle('db:mutate', ({ id, op }) =>
     attempt(async () => ({
       result: await sessions.withSession(id, s => {

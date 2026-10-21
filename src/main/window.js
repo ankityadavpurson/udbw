@@ -5,7 +5,7 @@ const { logger, logFile } = require('./logger');
 
 // Custom title bar: the native one is hidden and Electron draws only the window buttons, in these colours.
 // The overlay is one pixel shorter than the bar so the bar's bottom border shows under the window buttons.
-const TITLE_BAR = { height: 30, dark: { color: '#141414', symbolColor: '#ffffff' }, light: { color: '#ffffff', symbolColor: '#0d0d0d' } };
+const TITLE_BAR = { height: process.platform === 'darwin' ? 38 : 30, dark: { color: '#141414', symbolColor: '#ffffff' }, light: { color: '#ffffff', symbolColor: '#0d0d0d' } };
 const SPLASH_MIN_MS = 700; // avoid a flash when the UI is ready almost immediately
 const SPLASH_MAX_MS = 15000; // never leave the splash up if the UI fails to report
 
@@ -178,6 +178,7 @@ function createWindow() {
     show: false,
     titleBarStyle: 'hidden',
     titleBarOverlay: { ...TITLE_BAR.dark, height: TITLE_BAR.height - 1 },
+    trafficLightPosition: { x: 12, y: (TITLE_BAR.height - 12) / 2 }, // macOS: centre the window buttons in the bar
     autoHideMenuBar: true, // the menu bar appears on Alt; its shortcuts keep working while hidden
     width: 1440,
     height: 940,
@@ -246,17 +247,43 @@ function hardenWebContents() {
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === 'clipboard-sanitized-write'));
 }
 
+// The About window: a small themed page (src/about.html) instead of the plain system box. One at a time.
+let aboutWindow = null;
+let currentTheme = 'dark';
 function showAbout() {
-  dialog.showMessageBox(getMainWindow() || undefined, {
-    type: 'info',
-    title: 'About',
-    message: 'UDBW',
-    detail: `Universal DB Workbench\nVersion ${app.getVersion()}`,
-    buttons: ['OK']
+  if (aboutWindow && !aboutWindow.isDestroyed()) return aboutWindow.focus();
+  const palette = TITLE_BAR[currentTheme];
+  aboutWindow = new BrowserWindow({
+    parent: getMainWindow() || undefined,
+    width: 340,
+    height: 420,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 14, y: 14 },
+    backgroundColor: palette.color,
+    title: 'About UDBW',
+    icon: path.join(root, 'build', 'icon.png'),
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
+  aboutWindow.removeMenu();
+  aboutWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && input.key === 'Escape') aboutWindow.close();
+  });
+  aboutWindow.on('closed', () => {
+    aboutWindow = null;
+  });
+  const html = fs
+    .readFileSync(path.join(root, 'src', 'about.html'), 'utf8')
+    .replace('{{THEME}}', currentTheme)
+    .replace('{{VERSION}}', app.getVersion());
+  aboutWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 }
 
 function buildAppMenu(theme = 'dark') {
+  currentTheme = theme;
   const setTheme = mode => {
     const win = getMainWindow();
     if (win) win.webContents.send('theme:set', mode);
@@ -275,7 +302,24 @@ function buildAppMenu(theme = 'dark') {
   };
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
-      ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
+      ...(process.platform === 'darwin'
+        ? [
+            {
+              label: app.name,
+              submenu: [
+                { label: `About ${app.name}`, click: showAbout },
+                { type: 'separator' },
+                { role: 'services' },
+                { type: 'separator' },
+                { role: 'hide' },
+                { role: 'hideOthers' },
+                { role: 'unhide' },
+                { type: 'separator' },
+                { role: 'quit' }
+              ]
+            }
+          ]
+        : []),
       { role: 'fileMenu' },
       { role: 'editMenu' },
       viewMenu,

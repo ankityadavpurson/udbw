@@ -6,6 +6,9 @@ const sessions = require('./main/sessions');
 const { installCrashHandlers, logger } = require('./main/logger');
 const { scheduleUpdateChecks } = require('./main/updater');
 
+// From source the name would be the package name ("udbw"), which then shows in the app menu ("About udbw", "Quit udbw").
+app.setName('UDBW');
+
 // A run from source (`yarn dev` / `yarn start`) keeps its data in its own folder. Otherwise it would share the saved
 // connections and the single-instance lock with an installed copy, which would just be brought forward instead of starting.
 // (Windows folder names are not case sensitive, so "udbw" and the installed "UDBW" are the same folder.)
@@ -31,6 +34,8 @@ app.on('second-instance', () => {
 
 app.whenReady().then(() => {
   if (!primary) return;
+  // A run from source shows Electron's own icon in the dock; the packaged app gets its icon from the bundle.
+  if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(path.join(__dirname, '..', 'build', 'icon-mac.png'));
   windowState.hardenWebContents();
   windowState.buildAppMenu();
   windowState.createSplash();

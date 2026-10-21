@@ -1,4 +1,22 @@
-import { Button, CodeIcon, Flex, FolderIcon, HelperText, Input, ListIcon, Loader, RefreshIcon, SearchIcon, Select, Stack, TableIcon, Tree } from 'xedonium';
+import {
+  Button,
+  CodeIcon,
+  Flex,
+  FolderIcon,
+  HelperText,
+  InfoCircleIcon,
+  Input,
+  ListIcon,
+  Loader,
+  Menu,
+  PlusIcon,
+  RefreshIcon,
+  SearchIcon,
+  Select,
+  Stack,
+  TableIcon,
+  Tree
+} from 'xedonium';
 
 const typeLabel = type => ({ table: 'Tables', view: 'Views', sequence: 'Sequences', function: 'Functions', collection: 'Collections' })[type] || type;
 const TYPE_ORDER = ['table', 'view', 'collection', 'sequence', 'function'];
@@ -6,7 +24,7 @@ const typeIcon = type => (type === 'collection' ? <FolderIcon /> : type === 'fun
 const objectKey = item => `obj:${item.schema || ''}.${item.name}`;
 
 // `tree` is the object returned by useObjectTree.
-export default function ObjectBrowser({ active, isConnected, connecting, tree, selectedObject, onOpen }) {
+export default function ObjectBrowser({ active, isConnected, connecting, tree, selectedObject, onOpen, createItems = [], onInfo }) {
   if (connecting)
     return (
       <div className="p-4">
@@ -53,9 +71,17 @@ export default function ObjectBrowser({ active, isConnected, connecting, tree, s
     <Stack gap={2} className="compact-fields p-2">
       <Flex justify="between" align="center">
         <span className="text-[11px] font-semibold uppercase tracking-widest text-app-muted">Database objects</span>
-        <Button variant="flat" tooltip="Refresh objects" aria-label="Refresh objects" disabled={treeLoading} onClick={() => loadObjectTree()}>
-          <RefreshIcon />
-        </Button>
+        <Flex gap={1} className="compact-buttons compact-icons">
+          {!!createItems.length && <Menu label="New object" variant="flat" placement="bottom-end" trigger={<PlusIcon />} items={createItems} />}
+          {onInfo && (
+            <Button variant="flat" tooltip="Database info: size, character set, object counts" aria-label="Database info" onClick={onInfo}>
+              <InfoCircleIcon className="h-4 w-4" />
+            </Button>
+          )}
+          <Button variant="flat" tooltip="Refresh objects" aria-label="Refresh objects" disabled={treeLoading} onClick={() => loadObjectTree()}>
+            <RefreshIcon />
+          </Button>
+        </Flex>
       </Flex>
       {!!objectTree?.databases?.length && (
         <Select

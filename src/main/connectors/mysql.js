@@ -1,5 +1,7 @@
 const { normalizeSqlResult, buildSqlMutation, mutationResult, applyBatch } = require('./sql');
+const { buildAlterSql, buildCreateSql } = require('./create');
 const { capSql, sqlIsWrite } = require('../sqlText');
+const { formatBytes, formatCount, group } = require('./info');
 const { logger } = require('../logger');
 
 // `dial` is the profile as it must be dialled (host/port already point at the SSH tunnel when one is used).
@@ -84,6 +86,34 @@ async function mutateBatch(session, ops) {
   });
 }
 
+// Creates a database or a table (in the selected database unless `spec.schema` names another).
+async function create(session, spec, { preview = false } = {}) {
+  const target = spec.kind === 'table' ? { ...spec, schema: spec.schema || session.database || session.profile.database } : spec;
+  if (spec.kind === 'table' && !target.schema) throw new Error('Select a database first.');
+  const sql = buildCreateSql('mysql', target);
+  if (preview) return { statements: [sql] };
+  await session.client.query(sql);
+  return { message: `Created ${spec.kind} ${spec.name}`, statements: [sql] };
+}
+
+// Changes a table's columns or name. MySQL cannot roll DDL back, so the statements run one by one and a failure says
+// how many had already been applied. `preview` only returns the SQL.
+async function alter(session, { object, ops }, { preview = false } = {}) {
+  const target = { ...object, schema: object?.schema || session.database || session.profile.database };
+  const { columnInfo } = await describe(session, target);
+  const statements = buildAlterSql('mysql', target, ops, Object.fromEntries(columnInfo.map(column => [column.name, column])));
+  if (preview) return { statements };
+  for (const [index, sql] of statements.entries()) {
+    try {
+      await session.client.query(sql);
+    } catch (err) {
+      err.message = `${err.message}${index ? ` (${index} of ${statements.length} changes were already applied)` : ''}`;
+      throw err;
+    }
+  }
+  return { message: `Changed table ${object.name}`, statements };
+}
+
 async function switchDatabase(session, database) {
   await session.client.changeUser({ database });
   session.database = database;
@@ -139,6 +169,52 @@ async function discover(session, database) {
   };
 }
 
+// Charset, collation, size and object counts of the selected database, plus the server version.
+async function info(session, database) {
+  const client = await meta(session);
+  const name = database || session.database || session.profile.database;
+  if (!name) throw new Error('Select a database first.');
+  const [[version]] = await client.query('SELECT VERSION() AS version, @@version_comment AS edition');
+  const [schemas] = await client.query('SELECT DEFAULT_CHARACTER_SET_NAME AS charset, DEFAULT_COLLATION_NAME AS collation FROM information_schema.schemata WHERE SCHEMA_NAME = ?', [
+    name
+  ]);
+  if (!schemas.length) throw new Error(`Database ${name} was not found.`);
+  const [[tables]] = await client.query(
+    `SELECT SUM(TABLE_TYPE = 'BASE TABLE') AS tables, SUM(TABLE_TYPE = 'VIEW') AS views, SUM(DATA_LENGTH) AS data, SUM(INDEX_LENGTH) AS indexes, SUM(TABLE_ROWS) AS roughRows
+     FROM information_schema.tables WHERE TABLE_SCHEMA = ?`,
+    [name]
+  );
+  const [routines] = await client.query('SELECT ROUTINE_TYPE AS kind, COUNT(*) AS total FROM information_schema.routines WHERE ROUTINE_SCHEMA = ? GROUP BY ROUTINE_TYPE', [name]);
+  const routineCount = kind => Number(routines.find(row => String(row.kind).toUpperCase() === kind)?.total || 0);
+  const [[triggers]] = await client.query('SELECT COUNT(*) AS total FROM information_schema.triggers WHERE TRIGGER_SCHEMA = ?', [name]);
+  const size = Number(tables.data || 0) + Number(tables.indexes || 0);
+  return {
+    name,
+    subtitle: `MySQL ${version.version}`,
+    groups: [
+      group('Schema details', [
+        { label: 'Default collation', value: schemas[0].collation },
+        { label: 'Default character set', value: schemas[0].charset },
+        { label: 'Database size (rough estimate)', value: formatBytes(size) }
+      ]),
+      group('Contents', [
+        { label: 'Tables', value: formatCount(tables.tables) },
+        { label: 'Views', value: formatCount(tables.views) },
+        { label: 'Stored procedures', value: formatCount(routineCount('PROCEDURE')) },
+        { label: 'Functions', value: formatCount(routineCount('FUNCTION')) },
+        { label: 'Triggers', value: formatCount(triggers.total) },
+        { label: 'Rows (rough estimate)', value: formatCount(tables.roughRows) },
+        { label: 'Data size', value: formatBytes(tables.data) },
+        { label: 'Index size', value: formatBytes(tables.indexes) }
+      ]),
+      group('Server', [
+        { label: 'Version', value: version.version },
+        { label: 'Edition', value: version.edition }
+      ])
+    ]
+  };
+}
+
 async function describe(session, object) {
   const client = await meta(session);
   const schema = object.schema || session.database || session.profile.database;
@@ -171,6 +247,7 @@ async function describe(session, object) {
       nullable: c.nullable === 'YES',
       defaultValue: c.defaultValue ?? null,
       auto: /auto_increment/i.test(c.extra || ''),
+      defaultGenerated: /default_generated/i.test(c.extra || ''),
       generated: /generated/i.test(c.extra || '')
     })),
     primaryKey: keys.map(k => k.name),
@@ -178,4 +255,4 @@ async function describe(session, object) {
   };
 }
 
-module.exports = { routineSignatures, connect, close, query, cancel, mutate, mutateBatch, switchDatabase, discover, describe, isWrite };
+module.exports = { routineSignatures, connect, close, query, cancel, mutate, mutateBatch, create, alter, info, switchDatabase, discover, describe, isWrite };

@@ -1,5 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIcon, BookmarkIcon, ClockIcon, CodeIcon, ConfirmDialog, CopyIcon, Drawer, EditIcon, RefreshIcon, Stack, StarIcon, Trash2Icon, ZapIcon } from 'xedonium';
+import {
+  ActivityIcon,
+  BookmarkIcon,
+  ClockIcon,
+  CodeIcon,
+  ConfirmDialog,
+  CopyIcon,
+  DatabaseIcon,
+  Drawer,
+  EditIcon,
+  FilePlusIcon,
+  FolderIcon,
+  FolderPlusIcon,
+  InfoCircleIcon,
+  RefreshIcon,
+  Stack,
+  StarIcon,
+  TableIcon,
+  Trash2Icon,
+  ZapIcon
+} from 'xedonium';
 import useMediaQuery from 'xedonium/hooks/useMediaQuery';
 import useConnections from './hooks/useConnections.js';
 import useObjectTree from './hooks/useObjectTree.js';
@@ -25,6 +45,13 @@ import RecordEditorDialog from './components/dialogs/RecordEditorDialog.jsx';
 import RecordViewerDialog from './components/dialogs/RecordViewerDialog.jsx';
 import HistoryDialog from './components/dialogs/HistoryDialog.jsx';
 import UpdateDialog from './components/dialogs/UpdateDialog.jsx';
+import CreateObjectDialog from './components/dialogs/CreateObjectDialog.jsx';
+import AlterTableDialog from './components/dialogs/AlterTableDialog.jsx';
+import useCreateObject from './hooks/useCreateObject.js';
+import useAlterTable from './hooks/useAlterTable.js';
+import DatabaseInfoDialog from './components/dialogs/DatabaseInfoDialog.jsx';
+import useDatabaseInfo from './hooks/useDatabaseInfo.js';
+import { createKinds } from './lib/create.js';
 import UpdateToast from './components/UpdateToast.jsx';
 
 const objectId = item => `${item.schema || ''}.${item.name}`;
@@ -63,6 +90,20 @@ export default function App() {
   });
   const { tab } = tabsApi;
   const records = useRecordEditor({ active, tab, runQuery: tabsApi.runQuery, runMutation: tabsApi.runMutation, setQuery: tabsApi.setQuery, setStatus });
+  const dbInfo = useDatabaseInfo({ active, tree, markLost: conn.markLost });
+  const create = useCreateObject({ active, tree, markLost: conn.markLost, setStatus });
+  // After a table's structure changed: reload the objects, point the open tab at the (possibly renamed) table and re-read it.
+  const alter = useAlterTable({
+    active,
+    markLost: conn.markLost,
+    setStatus,
+    onAltered: async (object, newName) => {
+      await tree.loadObjectTree(active.id, tree.currentDatabase, tree.currentSchema);
+      const renamed = { name: newName, schema: object.schema, type: object.type };
+      tabsApi.patchTab({ selectedObject: renamed });
+      await openObject(renamed);
+    }
+  });
   const gridEdits = useGridEdits({
     active,
     tab,
@@ -311,9 +352,31 @@ export default function App() {
     { key: 'edit', label: 'Edit connection', icon: <EditIcon />, disabled: !active, onClick: () => dialog.openDialog(active) },
     { key: 'duplicate', label: 'Duplicate', icon: <CopyIcon />, disabled: !active, onClick: () => conn.duplicateConnection(active) },
     { key: 'favorite', label: active?.favorite ? 'Remove favorite' : 'Add favorite', icon: <StarIcon />, disabled: !active, onClick: () => conn.toggleFavorite(active.id) },
+    { key: 'info', label: 'Database info', icon: <InfoCircleIcon />, disabled: !isConnected, onClick: dbInfo.openDialog },
     { key: 'refresh', label: 'Refresh objects', icon: <RefreshIcon />, disabled: !isConnected, onClick: () => tree.loadObjectTree() },
     { key: 'delete', label: 'Delete connection', icon: <Trash2Icon />, tone: 'danger', disabled: !active, onClick: () => setDeleteTarget(active) }
   ];
+
+  // "New …" in the object browser: what the connection can create, plus a record in the open table or collection.
+  const KIND_ITEM = {
+    database: { label: 'New database…', icon: <DatabaseIcon /> },
+    schema: { label: 'New schema…', icon: <FolderIcon /> },
+    table: { label: 'New table…', icon: <TableIcon /> },
+    collection: { label: 'New collection…', icon: <FolderPlusIcon /> }
+  };
+  const canCreate = isConnected && !active?.readOnly;
+  const createItems = active
+    ? [
+        ...createKinds(active).map(kind => ({ key: kind, ...KIND_ITEM[kind], disabled: !canCreate, onClick: () => create.openDialog(kind) })),
+        {
+          key: 'record',
+          label: language === 'command' ? 'New document…' : 'New row…',
+          icon: <FilePlusIcon />,
+          disabled: !canCreate || !records.selectedObject,
+          onClick: () => records.openEditor('insert')
+        }
+      ]
+    : [];
 
   const sidebar = (close, inDrawer, autoCollapsed) => (
     <AppSidebar
@@ -335,6 +398,8 @@ export default function App() {
         tree={tree}
         selectedObject={tab.selectedObject}
         onOpen={openObject}
+        createItems={createItems}
+        onInfo={dbInfo.openDialog}
       />
     </AppSidebar>
   );
@@ -342,7 +407,7 @@ export default function App() {
   return (
     <>
       <div className="flex h-full flex-col overflow-hidden bg-app-bg text-app-text">
-        <TitleBar />
+        <TitleBar connectionName={active?.name} />
         <div className="flex min-h-0 flex-1">
           {isMd && <aside className="shrink-0">{sidebar(() => {}, false, !isLg)}</aside>}
           <main className="min-w-0 flex-1 overflow-y-auto">
@@ -397,6 +462,7 @@ export default function App() {
                 language={languageFor(active)}
                 onLoadMore={max => tabsApi.runQuery(tab.query, tab.id, { maxRows: max })}
                 onBrowse={tabsApi.browseTo}
+                onEditStructure={canCreate && createKinds(active).includes('table') && tab.selectedObject?.type === 'table' ? object => alter.openDialog(object) : undefined}
                 onViewChange={tabsApi.setView}
                 onSelect={tabsApi.setSelected}
                 onRerun={() => (tab.browse && tab.query === tab.browse.generated ? tabsApi.runQuery() : runEditor('all'))}
@@ -413,6 +479,9 @@ export default function App() {
       </Drawer>
 
       <ConnectionDialog dialog={dialog} groups={[...new Set(conn.profiles.map(p => p.group?.trim() || 'Connections'))]} />
+      <DatabaseInfoDialog dbInfo={dbInfo} connectionName={active?.name} />
+      <AlterTableDialog alter={alter} active={active} />
+      <CreateObjectDialog create={create} active={active} schemas={tree.objectTree?.schemas} />
       <RecordEditorDialog records={records} objectName={records.selectedObject?.name} documentMode={language === 'command'} />
       <RecordViewerDialog open={records.viewerOpen} onClose={() => records.setViewerOpen(false)} record={records.selectedJson} onCopy={copyText} />
       <UpdateDialog />

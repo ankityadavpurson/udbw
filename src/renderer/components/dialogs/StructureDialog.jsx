@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, CopyIcon, Flex, HelperText, Input, Modal, ToggleButton, ToggleButtonGroup, Tooltip } from 'xedonium';
+import { Button, CopyIcon, EditIcon, Flex, HelperText, Input, Modal, ToggleButton, ToggleButtonGroup, Tooltip } from 'xedonium';
 import { columnMarks, indexInfo, splitType } from '../../lib/structure.js';
 import { copyToClipboard } from '../../lib/exporters.js';
 
@@ -111,7 +111,7 @@ function IndexList({ indexes }) {
 }
 
 // Columns and indexes of the opened table (read by describe when the table was opened).
-export default function StructureDialog({ open, onClose, object }) {
+export default function StructureDialog({ open, onClose, object, onEdit }) {
   const [view, setView] = useState('columns');
   const [filter, setFilter] = useState('');
   const [copied, setCopied] = useState(false);
@@ -153,7 +153,21 @@ export default function StructureDialog({ open, onClose, object }) {
             </span>
             <span>NULL = may be left empty</span>
           </div>
-          <Button onClick={onClose}>Close</Button>
+          <Flex gap={2}>
+            {onEdit && (
+              <Button
+                variant="secondary"
+                tooltip="Add, remove or rename columns, change types and defaults"
+                onClick={() => {
+                  onClose();
+                  onEdit(object);
+                }}
+              >
+                <EditIcon /> Edit structure
+              </Button>
+            )}
+            <Button onClick={onClose}>Close</Button>
+          </Flex>
         </Flex>
       }
     >
